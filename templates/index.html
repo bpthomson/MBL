@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>巴哈姆特轉 MAL</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+        input[type="text"], input[type="number"] { width: 100%; padding: 10px; margin: 10px 0; }
+        button { padding: 10px 20px; background-color: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>MyBahaList - 收藏轉換器</h1>
+    <p>輸入你的巴哈姆特 ID，自動生成 MyAnimeList 匯入檔。</p>
+    
+    {% if error %}
+        <p class="error">{{ error }}</p>
+    {% endif %}
+
+    <form action="/" method="POST">
+        <label>巴哈姆特 User ID:</label>
+        <input type="text" name="user_id" placeholder="例如: sses3205" required>
+        
+        <label>測試限制數量 (留空則跑全部):</label>
+        <input type="number" name="limit" placeholder="例如: 10">
+        
+        <button type="submit">開始轉換</button>
+    </form>
+</body>
+</html>

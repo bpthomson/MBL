@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>處理中...</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #1a1a1a; 
+            color: white;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        /* 中央資訊區 */
+        .info-panel {
+            text-align: center;
+            margin-bottom: 30px;
+            z-index: 10;
+        }
+        
+        .loader {
+            border: 4px solid #333; 
+            border-top: 4px solid #3498db; 
+            border-radius: 50%; 
+            width: 50px; height: 50px; 
+            animation: spin 1s linear infinite; 
+            margin: 0 auto 15px auto;
+            box-shadow: 0 0 15px rgba(52, 152, 219, 0.5);
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        #status-text { font-size: 1.5em; font-weight: bold; margin-bottom: 10px; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+        #progress-text { font-size: 1em; color: #aaa; }
+
+        /* 圖片展示帶 (Conveyor Belt) */
+        .gallery-container {
+            width: 90%;
+            height: 320px; /* 固定高度 */
+            display: flex;
+            align-items: center;
+            overflow-x: auto; /* 允許橫向捲動 */
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 0 20px;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+            scroll-behavior: smooth; /* 平滑捲動 */
+            border: 1px solid #333;
+        }
+
+        /* 隱藏卷軸但保留功能 */
+        .gallery-container::-webkit-scrollbar {
+            height: 8px;
+        }
+        .gallery-container::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+        .gallery-container::-webkit-scrollbar-track {
+            background: #222;
+        }
+
+        /* 卡片樣式 */
+        .anime-card {
+            flex: 0 0 auto; /* 防止縮放 */
+            width: 200px;
+            margin-right: 20px;
+            position: relative;
+            transition: transform 0.3s;
+            animation: slideIn 0.5s ease-out; /* 進場動畫 */
+            border-radius: 8px;
+            overflow: hidden;
+            background: #000;
+        }
+
+        .anime-card img {
+            width: 100%;
+            height: 280px; /* 固定圖片高度 */
+            object-fit: cover;
+            display: block;
+            border-radius: 8px;
+        }
+
+        .anime-card .title {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(0,0,0,0.7);
+            font-size: 12px;
+            padding: 5px;
+            box-sizing: border-box;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Low Confidence 樣式 */
+        .anime-card.low-conf {
+            box-shadow: 0 0 0 4px #ff3333;
+            transform: scale(0.95);
+        }
+        .anime-card.low-conf::after {
+            content: "⚠️ Low Confidence";
+            position: absolute;
+            top: 5px; right: 5px;
+            background: #ff3333;
+            color: white;
+            font-size: 10px;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+
+        /* 進場動畫 Keyframes */
+        @keyframes slideIn {
+            from { 
+                opacity: 0; 
+                transform: translateX(50px) scale(0.8); 
+            }
+            to { 
+                opacity: 1; 
+                transform: translateX(0) scale(1); 
+            }
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="info-panel">
+        <div class="loader"></div>
+        <div id="status-text">準備開始...</div>
+        <div id="progress-text">初始化連線中</div>
+    </div>
+
+    <div class="gallery-container" id="gallery">
+        </div>
+
+    <script>
+        const userId = "{{ user_id }}";
+        const limit = "{{ limit }}";
+        const statusDiv = document.getElementById('status-text');
+        const progressDiv = document.getElementById('progress-text');
+        const gallery = document.getElementById('gallery');
+        
+        let isDone = false; // 標記是否完成，防止重複跳轉
+
+        // 建立 SSE 連線
+        const evtSource = new EventSource(`/stream_progress?user_id=${userId}&limit=${limit}`);
+
+        evtSource.onmessage = function(e) {
+            if (isDone) return; // 如果已經完成，忽略後續訊息
+
+            const data = JSON.parse(e.data);
+
+            // 1. 處理錯誤
+            if (data.error) {
+                statusDiv.innerText = "錯誤: " + data.error;
+                statusDiv.style.color = "#ff3333";
+                document.querySelector('.loader').style.display = 'none';
+                evtSource.close();
+                isDone = true;
+                return;
+            }
+
+            // 2. 處理完成跳轉
+            if (data.done) {
+                statusDiv.innerText = "轉換完成！準備跳轉...";
+                isDone = true; // 設定標記
+                evtSource.close(); // [關鍵] 收到 done 立刻關閉連線，防止瀏覽器重連
+                
+                setTimeout(() => {
+                    window.location.href = data.redirect_url;
+                }, 1500); // 稍微停一下讓用戶看到最後狀態
+                return;
+            }
+
+            // 3. 更新文字訊息
+            if (data.msg) {
+                statusDiv.innerText = data.msg;
+            }
+            if (data.progress) {
+                progressDiv.innerText = `進度: ${data.progress}`;
+            }
+
+            // 4. 產生圖片卡片
+            if (data.type === 'image' && data.img_url) {
+                addCard(data.img_url, data.title, data.is_low);
+            }
+        };
+
+        // [關鍵] 監聽錯誤：如果後端斷線，這裡會觸發
+        evtSource.onerror = function(e) {
+            if (!isDone) {
+                // 如果不是因為我們收到 done 訊號而主動關閉的，那代表意外斷線或結束
+                // 為了避免無限重抓，我們在這裡強制關閉
+                console.log("Stream connection lost or closed.");
+                evtSource.close();
+                
+                // 如果還沒跳轉但斷線了，可能需要提示用戶或手動跳轉
+                // 這裡假設如果斷線了通常是跑完了但沒收到 done，或者出錯了
+            }
+        };
+
+        function addCard(url, title, isLow) {
+            const card = document.createElement('div');
+            card.classList.add('anime-card');
+            if (isLow) card.classList.add('low-conf');
+
+            const img = document.createElement('img');
+            img.src = url;
+            
+            const titleDiv = document.createElement('div');
+            titleDiv.classList.add('title');
+            titleDiv.innerText = title;
+
+            card.appendChild(img);
+            card.appendChild(titleDiv);
+
+            gallery.appendChild(card);
+
+            // 自動捲動到最右邊 (最新的圖片)
+            requestAnimationFrame(() => {
+                gallery.scrollLeft = gallery.scrollWidth;
+            });
+        }
+    </script>
+</body>
+</html>
