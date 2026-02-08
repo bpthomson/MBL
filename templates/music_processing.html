@@ -1,68 +1,58 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-TW">
 <head>
-<meta charset="UTF-8"><title>下載音樂</title>
+<meta charset="UTF-8"><title>下載中</title>
 <style>
-body{font-family:sans-serif;background:#222;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh}
-.bar{width:300px;height:20px;background:#444;border-radius:10px;overflow:hidden;margin:20px}
-.fill{height:100%;width:0%;background:linear-gradient(90deg,#6610f2,#d63384);transition:width 0.3s}
-.log{width:300px;height:150px;background:#000;border:1px solid #333;font-family:monospace;font-size:12px;color:#0f0;padding:10px;overflow-y:auto;text-align:left}
-#dlBtn{display:none;padding:10px 20px;background:#28a745;color:#fff;text-decoration:none;border-radius:5px;font-weight:bold;margin-top:20px}
-#backBtn{display:none;margin-top:20px;color:#aaa;text-decoration:underline;cursor:pointer}
+    body { font-family: -apple-system, monospace; background: #121212; color: #e0e0e0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .container { width: 90%; max-width: 600px; }
+    h2 { font-weight: 500; margin-bottom: 20px; text-align: center; color: #fff; }
+    
+    .progress-bg { width: 100%; height: 4px; background: #333; border-radius: 2px; overflow: hidden; margin-bottom: 20px; }
+    .progress-fill { height: 100%; width: 0%; background: #0071e3; transition: width 0.3s; }
+    
+    .log-window { height: 250px; background: #000; border: 1px solid #333; padding: 15px; overflow-y: auto; font-size: 12px; line-height: 1.6; color: #aaa; border-radius: 6px; margin-bottom: 20px; }
+    .log-line { border-bottom: 1px solid #1a1a1a; padding: 2px 0; }
+    
+    .btn-area { text-align: center; display: flex; justify-content: center; gap: 15px; }
+    a { padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500; display: none; }
+    .btn-dl { background: #0071e3; color: white; }
+    .btn-back { background: #333; color: white; }
 </style>
 </head>
 <body>
-<h2>🎵 下載中...</h2>
-<div id="msg">初始化...</div>
-<div class="bar"><div class="fill" id="fill"></div></div>
-<div class="log" id="log"></div>
-<a href="#" id="dlBtn">📥 下載 ZIP</a>
-<a href="javascript:history.back()" id="backBtn">回上一頁重試</a>
-
+<div class="container">
+    <h2 id="status">下載中...</h2>
+    <div class="progress-bg"><div class="progress-fill" id="fill"></div></div>
+    <div class="log-window" id="log"></div>
+    <div class="btn-area">
+        <a href="#" id="dlBtn" class="btn-dl">下載檔案</a>
+        <a href="/select/{{user_id}}" id="backBtn" class="btn-back">返回清單</a>
+    </div>
+</div>
 <script>
-// 注意：這裡是連接 /stream_music_download (音樂下載進度)
 const es = new EventSource("/stream_music_download?user_id={{user_id}}");
 const log = document.getElementById('log');
+const status = document.getElementById('status');
+
+function addLog(txt) {
+    const d = document.createElement('div');
+    d.className = 'log-line'; d.innerText = txt;
+    log.appendChild(d); log.scrollTop = log.scrollHeight;
+}
 
 es.onmessage = e => {
     const d = JSON.parse(e.data);
-    
-    if(d.error){
-        document.getElementById('msg').innerText = "❌ 發生錯誤";
-        document.getElementById('msg').style.color = "#ff4444";
-        
-        const l = document.createElement('div');
-        l.innerText = 'Error: ' + d.error;
-        l.style.color = "red";
-        log.appendChild(l);
-        
-        document.getElementById('backBtn').style.display = 'block';
-        es.close();
-        return;
-    }
-
-    if(d.msg){
-        document.getElementById('msg').innerText = d.msg;
-        const l = document.createElement('div');
-        l.innerText = '> ' + d.msg;
-        log.appendChild(l);
-        log.scrollTop = log.scrollHeight;
-    }
-    
+    if(d.error) { status.innerText="錯誤"; addLog("Error: "+d.error); document.getElementById('backBtn').style.display='inline-block'; es.close(); return; }
+    if(d.msg) { document.getElementById('status').innerText = d.msg; addLog(d.msg); }
     if(d.progress) document.getElementById('fill').style.width = d.progress;
-    
-    if(d.done){
-        document.getElementById('dlBtn').href = "/download/" + d.filename;
+    if(d.done) {
+        status.innerText = "打包完成";
+        document.getElementById('dlBtn').href = "/download/"+d.filename;
         document.getElementById('dlBtn').style.display = 'inline-block';
+        document.getElementById('backBtn').style.display = 'inline-block';
         es.close();
     }
 };
-
-es.onerror = () => {
-    if(document.getElementById('dlBtn').style.display === 'none'){
-        console.log("Stream connection lost");
-    }
-}
 </script>
 </body>
 </html>

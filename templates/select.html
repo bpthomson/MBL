@@ -1,69 +1,104 @@
 <!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><title>選擇項目</title>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8"><title>選擇項目</title>
 <style>
-body{font-family:sans-serif;background:#f4f4f4;padding:20px}
-.controls{position:sticky;top:0;z-index:90;background:#fff;padding:15px;box-shadow:0 2px 10px rgba(0,0,0,.1);display:flex;justify-content:space-between;align-items:center;border-radius:8px;margin-bottom:20px}
-.btn{padding:8px 16px;border:none;border-radius:5px;cursor:pointer;font-weight:bold;margin-left:5px}
-.btn-primary{background:#007bff;color:#fff} .btn-music{background:#6610f2;color:#fff} .btn-outline{border:1px solid #666;background:none}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:15px}
-.card-wrapper{position:relative;transition:transform 0.2s}
-.card-wrapper:hover{transform:translateY(-5px);z-index:50}
-.card{background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 5px rgba(0,0,0,.1);border:3px solid transparent;transition:box-shadow 0.2s,border-color 0.2s;display:block;height:100%}
-.card:hover{box-shadow:0 5px 15px rgba(0,0,0,.2)}
-.card.selected{border-color:#007bff}
-.card.selected::after{content:"✔";position:absolute;top:5px;right:5px;background:#007bff;color:#fff;border-radius:50%;width:24px;line-height:24px;text-align:center}
-.card.warning{border-color:#ffc107}
-.card img{width:100%;height:250px;object-fit:cover;display:block}
-.card-body{padding:10px;padding-bottom:45px}
-.report-btn{position:absolute;bottom:8px;right:8px;background:#dc3545;color:#fff;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;z-index:20;opacity:0.9;transition:0.2s}
-.report-btn:hover{transform:scale(1.1);opacity:1} .report-btn.reported{background:#6c757d;cursor:default}
-.modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:1000;justify-content:center;align-items:center}
-.modal{background:#fff;padding:20px;border-radius:8px;width:300px;text-align:center}
-input[type=checkbox]{display:none}
-</style></head>
+    body { font-family: -apple-system, sans-serif; background: #121212; padding: 20px; color: #e0e0e0; }
+    
+    .controls { position: sticky; top: 0; z-index: 90; background: rgba(30,30,30,0.95); padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.3); border: 1px solid #333; margin-bottom: 20px; }
+    h2 { margin: 0; font-size: 18px; font-weight: 600; color: #fff; }
+    .sub-text { font-size: 13px; color: #aaa; }
+    
+    .btn-group { display: flex; gap: 8px; }
+    button { padding: 8px 16px; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: 0.2s; }
+    .btn-outline { background: transparent; border: 1px solid #555; color: #ccc; }
+    .btn-outline:hover { background: #333; }
+    .btn-primary { background: #0071e3; color: white; }
+    .btn-primary:hover { background: #0077ed; }
+    .btn-secondary { background: #333; color: white; }
+    
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
+    .card-wrapper { position: relative; }
+    
+    .card { display: block; background: #1e1e1e; border-radius: 8px; overflow: hidden; border: 2px solid transparent; cursor: pointer; transition: 0.2s; height: 100%; }
+    .card:hover { transform: translateY(-3px); }
+    .card.selected { border-color: #0071e3; box-shadow: 0 0 0 2px rgba(0,113,227,0.3); }
+    .card.warning { border-color: #ffcc00; }
+    
+    .card img { width: 100%; height: 220px; object-fit: cover; display: block; opacity: 0.9; }
+    .card-body { padding: 10px; font-size: 13px; line-height: 1.4; padding-bottom: 40px; }
+    .title-main { font-weight: 600; color: #fff; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .title-sub { color: #888; margin-top: 4px; font-size: 12px; }
+    
+    /* 回報按鈕樣式 */
+    .report-btn { position: absolute; bottom: 8px; right: 8px; background: #dc3545; color: white; padding: 4px 10px; font-size: 11px; border-radius: 4px; z-index: 10; opacity: 0.8; }
+    .report-btn:hover { opacity: 1; }
+    /* 回報後的樣式 */
+    .report-btn.reported { background: #6c757d; color: #ccc; cursor: default; pointer-events: none; opacity: 0.6; }
+
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 100; justify-content: center; align-items: center; }
+    .modal-box { background: #2c2c2c; padding: 25px; border-radius: 12px; width: 300px; text-align: center; border: 1px solid #444; }
+    input[type="text"] { width: 100%; padding: 8px; margin: 15px 0; background: #1e1e1e; border: 1px solid #444; color: #fff; border-radius: 6px; box-sizing: border-box; }
+</style>
+</head>
 <body>
 <form action="/dispatch_action" method="POST">
 <input type="hidden" name="user_id" value="{{user_id}}">
 <div class="controls">
- <div><h2>篩選</h2><span style="color:#666;font-size:12px">確認無誤後選擇功能</span></div>
- <div>
-  <button type="button" class="btn btn-outline" onclick="toggle(true)">全選</button>
-  <button type="button" class="btn btn-outline" onclick="toggle(false)">全消</button>
-  <button type="submit" name="action" value="xml" class="btn btn-primary">📄 生成 XML</button>
-  <button type="submit" name="action" value="music" class="btn btn-music">🎵 下載音樂</button>
- </div>
+    <div>
+        <h2>選擇項目</h2>
+        <div class="sub-text">請勾選正確項目</div>
+    </div>
+    <div class="btn-group">
+        <button type="button" class="btn-outline" onclick="toggle(true)">全選</button>
+        <button type="button" class="btn-outline" onclick="toggle(false)">取消</button>
+        <button type="submit" name="action" value="xml" class="btn-primary">生成 XML</button>
+        <button type="submit" name="action" value="music" class="btn-secondary">下載音樂</button>
+    </div>
 </div>
+
 <div class="grid">
 {% for item in results %}
 <div class="card-wrapper">
- <label class="card {% if item.mal_id and not item.is_low %}selected{% endif %} {% if item.is_low %}warning{% endif %}">
-  <input type="checkbox" name="selected_items" value="{{item.id}}" {% if item.mal_id and not item.is_low %}checked{% endif %} onchange="upd(this)">
-  <img src="{{item.img_url}}" loading="lazy">
-  <div class="card-body"><b>{{item.baha_title}}</b><br><small style="color:#666">{{item.mal_title}}</small></div>
- </label>
- <button type="button" class="report-btn" id="btn-{{item.id}}" onclick="openRep('{{item.id}}','{{item.baha_title}}')">回報</button>
+    <label class="card {% if item.mal_id and not item.is_low %}selected{% endif %} {% if item.is_low %}warning{% endif %}">
+        <input type="checkbox" name="selected_items" value="{{item.id}}" style="display:none" {% if item.mal_id and not item.is_low %}checked{% endif %} onchange="this.closest('.card').classList.toggle('selected', this.checked)">
+        <img src="{{item.img_url}}" loading="lazy">
+        <div class="card-body">
+            <div class="title-main">{{item.baha_title}}</div>
+            <div class="title-sub">{{item.mal_title}}</div>
+        </div>
+    </label>
+    <button type="button" class="report-btn" id="btn-{{item.id}}" onclick="openRep('{{item.id}}')">回報錯誤</button>
 </div>
 {% endfor %}
 </div>
 </form>
 
-<div class="modal-overlay" id="repModal"><div class="modal">
-<h3>回報錯誤</h3><p id="mTitle" style="color:#007bff"></p>
-<input type="text" id="mMsg" placeholder="正確ID或備註" style="width:90%;padding:5px;margin:10px 0">
-<br><button onclick="subRep()">送出</button> <button onclick="clsRep()">取消</button>
+<div class="modal" id="repModal"><div class="modal-box">
+    <h3 style="color:#fff;margin-top:0">回報錯誤</h3>
+    <input type="text" id="mMsg" placeholder="正確 ID 或備註">
+    <div class="btn-group" style="justify-content: center;">
+        <button onclick="subRep()" class="btn-primary">送出</button>
+        <button onclick="document.getElementById('repModal').style.display='none'" class="btn-outline">取消</button>
+    </div>
 </div></div>
 
 <script>
-let curId=null;
-const uid="{{user_id}}";
-function upd(cb){cb.closest('.card').classList.toggle('selected',cb.checked)}
-function toggle(v){document.querySelectorAll('input[type=checkbox]').forEach(c=>{c.checked=v;upd(c)})}
-function openRep(id,t){if(document.getElementById('btn-'+id).classList.contains('reported'))return;curId=id;document.getElementById('mTitle').innerText=t;document.getElementById('mMsg').value='';document.getElementById('repModal').style.display='flex'}
-function clsRep(){document.getElementById('repModal').style.display='none';curId=null}
+let curId=null; const uid="{{user_id}}";
+function toggle(v){document.querySelectorAll('input[name="selected_items"]').forEach(c=>{c.checked=v;c.dispatchEvent(new Event('change'))})}
+function openRep(id){if(document.getElementById('btn-'+id).classList.contains('reported'))return;curId=id;document.getElementById('mMsg').value='';document.getElementById('repModal').style.display='flex'}
 function subRep(){
- const msg=document.getElementById('mMsg').value; if(!msg)return;
- fetch('/report_match',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:uid,item_id:curId,message:msg})})
- .then(r=>r.json()).then(d=>{if(d.success){const b=document.getElementById('btn-'+curId);b.innerText="已回報";b.classList.add('reported');clsRep()}else alert('失敗')});
+    const msg=document.getElementById('mMsg').value; if(!msg)return;
+    fetch('/report_match',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:uid,item_id:curId,message:msg})})
+    .then(r=>r.json()).then(d=>{
+        if(d.success){
+            const b=document.getElementById('btn-'+curId);
+            b.innerText="已回報";
+            b.classList.add('reported'); // 變更樣式
+            document.getElementById('repModal').style.display='none';
+        }
+    });
 }
-</script></body></html>
+</script>
+</body>
+</html>
