@@ -1,69 +1,16 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <title>完成</title>
-    <style>
-        body { font-family: sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; text-align: center; }
-        .success-icon { font-size: 80px; color: #28a745; margin-bottom: 20px; }
-        .btn { display: inline-block; padding: 15px 30px; color: white; text-decoration: none; border-radius: 8px; font-size: 18px; margin: 10px; cursor: pointer; border: none;}
-        .btn-green { background-color: #28a745; }
-        .btn-blue { background-color: #007bff; }
-        .box { border: 1px solid #ddd; padding: 30px; border-radius: 10px; background: #f9f9f9; margin-bottom: 30px;}
-        
-        .mini-list { text-align: left; max-height: 300px; overflow-y: auto; border: 1px solid #eee; padding: 10px; margin-top: 10px;}
-        .list-item { display: flex; align-items: center; padding: 5px; border-bottom: 1px solid #eee; }
-        .list-item input { margin-right: 10px; }
-    </style>
-    <script>
-        function toggleMusicAll(source) {
-            checkboxes = document.getElementsByName('selected_music');
-            for(var i=0, n=checkboxes.length;i<n;i++) {
-                checkboxes[i].checked = source.checked;
-            }
-        }
-    </script>
+<html>
+<head><meta charset="UTF-8"><title>完成</title>
+<style>body{font-family:sans-serif;text-align:center;padding:50px}.btn{padding:15px 30px;background:#28a745;color:#fff;text-decoration:none;border-radius:5px;font-size:18px}</style>
 </head>
 <body>
-    <div class="success-icon">🎉</div>
-    <h1>轉換成功！</h1>
-    <p>您的匯入檔案已經準備好了。</p>
-
-    <div class="box">
-        <h3>步驟 1: 取得匯入檔</h3>
-        {% if filename %}
-            <a href="/download_xml/{{ filename }}" class="btn btn-green">📥 下載 {{ filename }}</a>
-            <p style="color: #666; font-size: 14px; margin-top: 10px;">
-                下載後請至 <a href="https://myanimelist.net/import.php" target="_blank">MyAnimeList Import</a> 上傳。
-            </p>
-        {% else %}
-            <p style="color: red;">檔案生成失敗。</p>
-        {% endif %}
-    </div>
-
-    <div class="box">
-        <h3>步驟 2: 下載主題曲 (可選)</h3>
-        <p>勾選您想要下載歌曲的動畫：</p>
-        
-        <form action="/prepare_music" method="POST" target="_blank">
-            <input type="hidden" name="user_id" value="{{ user_id }}">
-            
-            <div class="mini-list">
-                <div style="padding: 5px; background: #eee; font-weight: bold;">
-                    <input type="checkbox" onclick="toggleMusicAll(this)"> 全選
-                </div>
-                {% for item in results %}
-                <div class="list-item">
-                    <input type="checkbox" name="selected_music" value="{{ item.mal_id }}">
-                    <span>{{ item.baha_title }}</span>
-                </div>
-                {% endfor %}
-            </div>
-            <br>
-            <button type="submit" class="btn btn-blue">🎵 下載選取的主題曲 (ZIP)</button>
-        </form>
-    </div>
-
-    <a href="/" style="color: #666;">回首頁</a>
-</body>
-</html>
+<h1 style="color:#28a745">XML 生成成功！</h1>
+<div style="border:1px solid #ddd;padding:40px;border-radius:10px;background:#f9f9f9;max-width:500px;margin:0 auto">
+ {% if filename %}
+  <p>您的檔案已準備好。</p>
+  <a href="/download/{{filename}}" class="btn">📥 下載 {{filename}}</a>
+ {% else %}
+  <p style="color:red">失敗</p>
+ {% endif %}
+</div><br><a href="/" style="color:#888">回首頁</a>
+</body></html>

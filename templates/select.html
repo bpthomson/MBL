@@ -1,234 +1,69 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <title>確認清單</title>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f4f4; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        
-        .controls { 
-            position: sticky; top: 0; z-index: 90;
-            background: white; padding: 15px; 
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
-            display: flex; justify-content: space-between; align-items: center;
-            border-radius: 8px; margin-bottom: 20px;
-        }
-        .btn { padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: bold; }
-        .btn-primary { background-color: #007bff; color: white; }
-        .btn-outline { background-color: transparent; border: 1px solid #666; color: #666; margin-right: 10px; }
-        .btn:hover { opacity: 0.8; }
-
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; }
-        
-        /* [FIX] 容器負責整體動畫 */
-        .card-wrapper {
-            position: relative;
-            transition: transform 0.2s; /* 動畫加在這裡 */
-        }
-        /* [FIX] 當滑鼠移入容器時，容器往上浮動 (包含卡片與按鈕) */
-        .card-wrapper:hover {
-            transform: translateY(-5px);
-            z-index: 50; /* 確保浮起來時不會被遮住 */
-        }
-
-        .card {
-            background: white; border-radius: 8px; overflow: hidden;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            position: relative; 
-            border: 3px solid transparent;
-            /* [FIX] 移除這裡的 transform transition，改由 wrapper 控制 */
-            transition: box-shadow 0.2s, border-color 0.2s;
-            display: block; user-select: none;
-            height: 100%;
-        }
-        
-        /* [FIX] 卡片 hover 時只加深陰影，不負責位移 */
-        .card:hover { 
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2); 
-        }
-
-        .card.selected { border-color: #007bff; }
-        .card.selected::after {
-            content: "✔"; position: absolute; top: 5px; right: 5px;
-            background: #007bff; color: white; border-radius: 50%;
-            width: 24px; height: 24px; text-align: center; line-height: 24px;
-            font-size: 14px; z-index: 10; pointer-events: none;
-        }
-        .card.warning { border-color: #ffc107; }
-
-        .card img { width: 100%; height: 250px; object-fit: cover; display: block; }
-        .card-body { padding: 10px; padding-bottom: 45px; }
-        .baha-title { font-weight: bold; font-size: 14px; margin-bottom: 5px; height: 40px; overflow: hidden; }
-        .mal-title { font-size: 12px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        
-        .report-btn {
-            position: absolute; bottom: 8px; right: 8px;
-            background: #dc3545; color: white;
-            border: none; border-radius: 4px;
-            padding: 4px 8px; font-size: 12px;
-            cursor: pointer; z-index: 20;
-            opacity: 0.9;
-            transition: opacity 0.2s, transform 0.2s; /* 加入 transform 動畫 */
-        }
-        .report-btn:hover { opacity: 1; transform: scale(1.05); }
-        .report-btn.reported { background: #6c757d; cursor: default; }
-
-        .modal-overlay {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5); z-index: 1000;
-            justify-content: center; align-items: center;
-        }
-        .modal {
-            background: white; padding: 25px; border-radius: 8px;
-            width: 320px; text-align: center;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-        }
-        .modal input { width: 90%; padding: 10px; margin: 15px 0; border: 1px solid #ddd; border-radius: 4px;}
-        .modal-btns { display: flex; justify-content: center; gap: 10px; margin-top: 10px; }
-
-        input[type="checkbox"] { display: none; }
-    </style>
-</head>
+<html>
+<head><meta charset="UTF-8"><title>選擇項目</title>
+<style>
+body{font-family:sans-serif;background:#f4f4f4;padding:20px}
+.controls{position:sticky;top:0;z-index:90;background:#fff;padding:15px;box-shadow:0 2px 10px rgba(0,0,0,.1);display:flex;justify-content:space-between;align-items:center;border-radius:8px;margin-bottom:20px}
+.btn{padding:8px 16px;border:none;border-radius:5px;cursor:pointer;font-weight:bold;margin-left:5px}
+.btn-primary{background:#007bff;color:#fff} .btn-music{background:#6610f2;color:#fff} .btn-outline{border:1px solid #666;background:none}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:15px}
+.card-wrapper{position:relative;transition:transform 0.2s}
+.card-wrapper:hover{transform:translateY(-5px);z-index:50}
+.card{background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 5px rgba(0,0,0,.1);border:3px solid transparent;transition:box-shadow 0.2s,border-color 0.2s;display:block;height:100%}
+.card:hover{box-shadow:0 5px 15px rgba(0,0,0,.2)}
+.card.selected{border-color:#007bff}
+.card.selected::after{content:"✔";position:absolute;top:5px;right:5px;background:#007bff;color:#fff;border-radius:50%;width:24px;line-height:24px;text-align:center}
+.card.warning{border-color:#ffc107}
+.card img{width:100%;height:250px;object-fit:cover;display:block}
+.card-body{padding:10px;padding-bottom:45px}
+.report-btn{position:absolute;bottom:8px;right:8px;background:#dc3545;color:#fff;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;z-index:20;opacity:0.9;transition:0.2s}
+.report-btn:hover{transform:scale(1.1);opacity:1} .report-btn.reported{background:#6c757d;cursor:default}
+.modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:1000;justify-content:center;align-items:center}
+.modal{background:#fff;padding:20px;border-radius:8px;width:300px;text-align:center}
+input[type=checkbox]{display:none}
+</style></head>
 <body>
-    <form action="/confirm_selection" method="POST">
-        <input type="hidden" name="user_id" value="{{ user_id }}">
-        
-        <div class="container">
-            <div class="controls">
-                <div>
-                    <h2>篩選與回報</h2>
-                    <span style="color: #666; font-size: 14px;">確認動畫是否正確，錯誤請點擊右下角「回報」</span>
-                </div>
-                <div>
-                    <button type="button" class="btn btn-outline" onclick="toggleAll(true)">全選</button>
-                    <button type="button" class="btn btn-outline" onclick="toggleAll(false)">全取消</button>
-                    <button type="submit" class="btn btn-primary">生成 XML</button>
-                </div>
-            </div>
+<form action="/dispatch_action" method="POST">
+<input type="hidden" name="user_id" value="{{user_id}}">
+<div class="controls">
+ <div><h2>篩選</h2><span style="color:#666;font-size:12px">確認無誤後選擇功能</span></div>
+ <div>
+  <button type="button" class="btn btn-outline" onclick="toggle(true)">全選</button>
+  <button type="button" class="btn btn-outline" onclick="toggle(false)">全消</button>
+  <button type="submit" name="action" value="xml" class="btn btn-primary">📄 生成 XML</button>
+  <button type="submit" name="action" value="music" class="btn btn-music">🎵 下載音樂</button>
+ </div>
+</div>
+<div class="grid">
+{% for item in results %}
+<div class="card-wrapper">
+ <label class="card {% if item.mal_id and not item.is_low %}selected{% endif %} {% if item.is_low %}warning{% endif %}">
+  <input type="checkbox" name="selected_items" value="{{item.id}}" {% if item.mal_id and not item.is_low %}checked{% endif %} onchange="upd(this)">
+  <img src="{{item.img_url}}" loading="lazy">
+  <div class="card-body"><b>{{item.baha_title}}</b><br><small style="color:#666">{{item.mal_title}}</small></div>
+ </label>
+ <button type="button" class="report-btn" id="btn-{{item.id}}" onclick="openRep('{{item.id}}','{{item.baha_title}}')">回報</button>
+</div>
+{% endfor %}
+</div>
+</form>
 
-            <div class="grid">
-                {% for item in results %}
-                <div class="card-wrapper">
-                    <label class="card 
-                        {% if item.mal_id and not item.is_low %}selected{% endif %} 
-                        {% if item.is_low %}warning{% endif %}
-                    ">
-                        <input type="checkbox" name="selected_items" value="{{ item.id }}" 
-                            {% if item.mal_id and not item.is_low %}checked{% endif %}
-                            onchange="updateCardStyle(this)">
+<div class="modal-overlay" id="repModal"><div class="modal">
+<h3>回報錯誤</h3><p id="mTitle" style="color:#007bff"></p>
+<input type="text" id="mMsg" placeholder="正確ID或備註" style="width:90%;padding:5px;margin:10px 0">
+<br><button onclick="subRep()">送出</button> <button onclick="clsRep()">取消</button>
+</div></div>
 
-                        <img src="{{ item.img_url }}" loading="lazy">
-                        
-                        <div class="card-body">
-                            <div class="baha-title">{{ item.baha_title }}</div>
-                            <div class="mal-title">{{ item.mal_title }}</div>
-                        </div>
-                    </label>
-
-                    <button type="button" class="report-btn" id="btn-{{ item.id }}" 
-                        onclick="openReportModal('{{ item.id }}', '{{ item.baha_title }}')">
-                        回報錯誤
-                    </button>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-    </form>
-
-    <div class="modal-overlay" id="reportModal">
-        <div class="modal">
-            <h3>回報配對錯誤</h3>
-            <p id="modal-anime-title" style="font-size: 14px; color: #007bff; font-weight: bold; margin-bottom:15px;"></p>
-            
-            <p style="font-size: 13px; color: #666; text-align:left; width: 90%; margin: 0 auto;">請輸入正確的 MAL ID 或備註：</p>
-            <input type="text" id="user-msg" placeholder="例如: 正確 ID 是 50265">
-            
-            <div class="modal-btns">
-                <button class="btn btn-outline" onclick="closeModal()">取消</button>
-                <button class="btn btn-primary" onclick="submitReport()">送出回報</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        let currentReportId = null; 
-        const userId = "{{ user_id }}";
-
-        function updateCardStyle(checkbox) {
-            const card = checkbox.closest('.card');
-            if (checkbox.checked) card.classList.add('selected');
-            else card.classList.remove('selected');
-        }
-
-        function toggleAll(check) {
-            const checkboxes = document.querySelectorAll('.grid input[type="checkbox"]');
-            checkboxes.forEach(cb => {
-                cb.checked = check;
-                updateCardStyle(cb);
-            });
-        }
-
-        function openReportModal(id, title) {
-            const btn = document.getElementById(`btn-${id}`);
-            if(btn.classList.contains('reported')) return; 
-
-            currentReportId = id; 
-            document.getElementById('modal-anime-title').innerText = title;
-            document.getElementById('user-msg').value = ''; 
-            document.getElementById('reportModal').style.display = 'flex';
-        }
-
-        function closeModal() {
-            document.getElementById('reportModal').style.display = 'none';
-            currentReportId = null; 
-        }
-
-        function submitReport() {
-            if (currentReportId === null) return;
-
-            const msg = document.getElementById('user-msg').value;
-            if (!msg) {
-                alert("請輸入一點內容，例如正確的 ID");
-                return;
-            }
-
-            const submitBtn = document.querySelector('#reportModal .btn-primary');
-            const originalText = submitBtn.innerText;
-            submitBtn.innerText = "傳送中...";
-            submitBtn.disabled = true;
-
-            fetch('/report_match', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    user_id: userId,
-                    item_id: currentReportId,
-                    message: msg
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    const btn = document.getElementById(`btn-${currentReportId}`);
-                    if(btn) {
-                        btn.innerText = "已回報";
-                        btn.classList.add('reported');
-                    }
-                    closeModal();
-                } else {
-                    alert("回報失敗: " + data.msg);
-                }
-            })
-            .catch(err => {
-                console.error(err);
-                alert("網路錯誤，請稍後再試");
-            })
-            .finally(() => {
-                submitBtn.innerText = originalText;
-                submitBtn.disabled = false;
-            });
-        }
-    </script>
-</body>
-</html>
+<script>
+let curId=null;
+const uid="{{user_id}}";
+function upd(cb){cb.closest('.card').classList.toggle('selected',cb.checked)}
+function toggle(v){document.querySelectorAll('input[type=checkbox]').forEach(c=>{c.checked=v;upd(c)})}
+function openRep(id,t){if(document.getElementById('btn-'+id).classList.contains('reported'))return;curId=id;document.getElementById('mTitle').innerText=t;document.getElementById('mMsg').value='';document.getElementById('repModal').style.display='flex'}
+function clsRep(){document.getElementById('repModal').style.display='none';curId=null}
+function subRep(){
+ const msg=document.getElementById('mMsg').value; if(!msg)return;
+ fetch('/report_match',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:uid,item_id:curId,message:msg})})
+ .then(r=>r.json()).then(d=>{if(d.success){const b=document.getElementById('btn-'+curId);b.innerText="已回報";b.classList.add('reported');clsRep()}else alert('失敗')});
+}
+</script></body></html>

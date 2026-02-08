@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"><title>下載音樂</title>
+<style>
+body{font-family:sans-serif;background:#222;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh}
+.bar{width:300px;height:20px;background:#444;border-radius:10px;overflow:hidden;margin:20px}
+.fill{height:100%;width:0%;background:linear-gradient(90deg,#6610f2,#d63384);transition:width 0.3s}
+.log{width:300px;height:150px;background:#000;border:1px solid #333;font-family:monospace;font-size:12px;color:#0f0;padding:10px;overflow-y:auto;text-align:left}
+#dlBtn{display:none;padding:10px 20px;background:#28a745;color:#fff;text-decoration:none;border-radius:5px;font-weight:bold;margin-top:20px}
+#backBtn{display:none;margin-top:20px;color:#aaa;text-decoration:underline;cursor:pointer}
+</style>
+</head>
+<body>
+<h2>🎵 下載中...</h2>
+<div id="msg">初始化...</div>
+<div class="bar"><div class="fill" id="fill"></div></div>
+<div class="log" id="log"></div>
+<a href="#" id="dlBtn">📥 下載 ZIP</a>
+<a href="javascript:history.back()" id="backBtn">回上一頁重試</a>
+
+<script>
+// 注意：這裡是連接 /stream_music_download (音樂下載進度)
+const es = new EventSource("/stream_music_download?user_id={{user_id}}");
+const log = document.getElementById('log');
+
+es.onmessage = e => {
+    const d = JSON.parse(e.data);
+    
+    if(d.error){
+        document.getElementById('msg').innerText = "❌ 發生錯誤";
+        document.getElementById('msg').style.color = "#ff4444";
+        
+        const l = document.createElement('div');
+        l.innerText = 'Error: ' + d.error;
+        l.style.color = "red";
+        log.appendChild(l);
+        
+        document.getElementById('backBtn').style.display = 'block';
+        es.close();
+        return;
+    }
+
+    if(d.msg){
+        document.getElementById('msg').innerText = d.msg;
+        const l = document.createElement('div');
+        l.innerText = '> ' + d.msg;
+        log.appendChild(l);
+        log.scrollTop = log.scrollHeight;
+    }
+    
+    if(d.progress) document.getElementById('fill').style.width = d.progress;
+    
+    if(d.done){
+        document.getElementById('dlBtn').href = "/download/" + d.filename;
+        document.getElementById('dlBtn').style.display = 'inline-block';
+        es.close();
+    }
+};
+
+es.onerror = () => {
+    if(document.getElementById('dlBtn').style.display === 'none'){
+        console.log("Stream connection lost");
+    }
+}
+</script>
+</body>
+</html>
