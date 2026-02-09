@@ -236,6 +236,10 @@ class ThemeDownloader:
                 "include": "animethemes,animethemes.song,animethemes.animethemeentries.videos.audio"
             }
             resp = self.rq.get(self.search_url, params=params, timeout=10)
+            if resp.status_code == 429:
+                time.sleep(0.5)
+                return self.get_theme_links(self, mal_id)
+            time.sleep(0.1)
             
             if resp.status_code != 200: return []
             data = resp.json().get('anime', [])

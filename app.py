@@ -4,6 +4,8 @@ import os
 import json
 import traceback
 import io
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 from flask import Flask, render_template, request, send_file, Response, redirect, url_for, jsonify, after_this_request
 from core_logic import BahamutCrawler, MalMatcher, MalXmlGenerator, ThemeDownloader
 
@@ -15,8 +17,39 @@ TEMP_RESULTS = {}
 FINAL_RESULTS = {}
 MUSIC_QUEUE = {}
 
+# [Google Sheets 設定]
+# 請確保 credentials.json 檔案存在於專案根目錄
+# 請確保您的 Google Sheet 名稱正確，且已共用給 Service Account Email
+SPREADSHEET_NAME = 'MyBahaList_Reports' 
+
 if not os.path.exists(OUTPUT_FOLDER):
     os.makedirs(OUTPUT_FOLDER)
+
+# Google Sheets 連線函式
+def append_to_sheet(data_row):
+    try:
+        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+        
+        # 檢查金鑰檔案是否存在
+        if not os.path.exists('credentials.json'):
+            print("[Error] 找不到 credentials.json，無法寫入 Google Sheets")
+            return False
+
+        creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+        client = gspread.authorize(creds)
+        
+        # 開啟試算表
+        sheet = client.open(SPREADSHEET_NAME).sheet1
+        
+        # 如果是第一列，寫入標題 (選用，視您是否已手動建立標題)
+        # if len(sheet.get_all_values()) == 0:
+        #     sheet.append_row(['Time', 'BahaTitle', 'MalID', 'Message'])
+            
+        sheet.append_row(data_row)
+        return True
+    except Exception as e:
+        print(f"[Sheet Error] {e}")
+        return False
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -40,8 +73,6 @@ def stream_progress():
 
     def generate():
         crawler = BahamutCrawler(user_id)
-        
-        # 1. 爬取列表
         try:
             collections = crawler.get_collections()
         except Exception as e:
@@ -55,7 +86,6 @@ def stream_progress():
         target_list = collections[:int(limit)] if limit and limit.isdigit() else collections
         yield f"data: {json.dumps({'msg': f'發現 {len(collections)} 筆，讀取 {len(target_list)} 筆...'})}\n\n"
         
-        # 2. 讀取詳細資料
         try:
             details = crawler.fetch_all_details(target_list)
         except:
@@ -64,7 +94,6 @@ def stream_progress():
 
         yield f"data: {json.dumps({'msg': '開始配對...'})}\n\n"
         
-        # 3. 配對
         matcher = MalMatcher()
         results = []
         total = len(details)
@@ -86,7 +115,6 @@ def stream_progress():
                 }
                 results.append(row)
                 
-                # 回傳進度
                 yield f"""data: {json.dumps({
                     'type': 'image',
                     'img_url': img,
@@ -194,6 +222,7 @@ def download_file(filename):
 
     return send_file(path, as_attachment=True)
 
+# [修正] 改為寫入 Google Sheets
 @app.route('/report_match', methods=['POST'])
 def report_match():
     data = request.json
@@ -201,20 +230,18 @@ def report_match():
     res = TEMP_RESULTS.get(uid)
     if not res: return jsonify({'success': False})
     
-    try:
-        exists = os.path.isfile('reports.csv')
-        with open('reports.csv', 'a', encoding='utf-8-sig', newline='') as f:
-            w = csv.writer(f)
-            if not exists: w.writerow(['Time', 'BahaTitle', 'MalID', 'Msg'])
-            w.writerow([
-                datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                res[idx]['baha_title'],
-                res[idx]['mal_id'],
-                msg
-            ])
-        return jsonify({'success': True})
-    except:
-        return jsonify({'success': False})
+    # 準備資料列
+    row = [
+        datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        res[idx]['baha_title'],
+        str(res[idx]['mal_id']), # 轉字串避免格式問題
+        msg
+    ]
+    
+    # 呼叫 Sheets 寫入函式
+    success = append_to_sheet(row)
+    
+    return jsonify({'success': success})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000, threaded=True)
