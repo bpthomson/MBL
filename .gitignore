@@ -1,10 +1,9 @@
-# 忽略虛擬環境
 venv/
 .venv/
 __pycache__/
 *.pyc
 
-# 忽略輸出資料夾 (因為這是暫存的)
 outputs/
 temp_music/
 reports.csv
+credentials.json

@@ -16,48 +16,29 @@ OUTPUT_FOLDER = 'outputs'
 TEMP_RESULTS = {}
 FINAL_RESULTS = {}
 MUSIC_QUEUE = {}
+USER_SELECTIONS = {} 
 
-# [Google Sheets 設定]
-# 請確保 credentials.json 檔案存在於專案根目錄
-# 請確保您的 Google Sheet 名稱正確，且已共用給 Service Account Email
 SPREADSHEET_NAME = 'MyBahaList_Reports' 
 
-if not os.path.exists(OUTPUT_FOLDER):
-    os.makedirs(OUTPUT_FOLDER)
+if not os.path.exists(OUTPUT_FOLDER): os.makedirs(OUTPUT_FOLDER)
 
-# Google Sheets 連線函式
 def append_to_sheet(data_row):
     try:
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-        
-        # 檢查金鑰檔案是否存在
-        if not os.path.exists('credentials.json'):
-            print("[Error] 找不到 credentials.json，無法寫入 Google Sheets")
-            return False
-
+        if not os.path.exists('credentials.json'): return False
         creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
         client = gspread.authorize(creds)
-        
-        # 開啟試算表
         sheet = client.open(SPREADSHEET_NAME).sheet1
-        
-        # 如果是第一列，寫入標題 (選用，視您是否已手動建立標題)
-        # if len(sheet.get_all_values()) == 0:
-        #     sheet.append_row(['Time', 'BahaTitle', 'MalID', 'Message'])
-            
         sheet.append_row(data_row)
         return True
-    except Exception as e:
-        print(f"[Sheet Error] {e}")
-        return False
+    except: return False
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
         user_id = request.form.get('user_id', '').strip()
         limit = request.form.get('limit')
-        if not user_id:
-            return render_template('index.html', error="請輸入 ID")
+        if not user_id: return render_template('index.html', error="請輸入 ID")
         return render_template('processing.html', user_id=user_id, limit=limit)
     return render_template('index.html')
 
@@ -65,35 +46,24 @@ def index():
 def stream_progress():
     user_id = request.args.get('user_id', '').strip()
     limit = request.args.get('limit')
-    
-    try:
-        final_url = url_for('select_results', user_id=user_id)
-    except:
-        return Response("data: error\n\n", mimetype='text/event-stream')
+    try: final_url = url_for('select_results', user_id=user_id)
+    except: return Response("data: error\n\n", mimetype='text/event-stream')
 
     def generate():
-        crawler = BahamutCrawler(user_id)
-        try:
-            collections = crawler.get_collections()
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-            return
+        if user_id in USER_SELECTIONS: del USER_SELECTIONS[user_id]
         
-        if not collections:
-            yield f"data: {json.dumps({'error': '找不到任何收藏'})}\n\n"
-            return
+        crawler = BahamutCrawler(user_id)
+        try: collections = crawler.get_collections()
+        except Exception as e: yield f"data: {json.dumps({'error': str(e)})}\n\n"; return
+        if not collections: yield f"data: {json.dumps({'error': '找不到任何收藏'})}\n\n"; return
             
         target_list = collections[:int(limit)] if limit and limit.isdigit() else collections
         yield f"data: {json.dumps({'msg': f'發現 {len(collections)} 筆，讀取 {len(target_list)} 筆...'})}\n\n"
         
-        try:
-            details = crawler.fetch_all_details(target_list)
-        except:
-            yield f"data: {json.dumps({'error': '資料讀取失敗'})}\n\n"
-            return
+        try: details = crawler.fetch_all_details(target_list)
+        except: yield f"data: {json.dumps({'error': '資料讀取失敗'})}\n\n"; return
 
         yield f"data: {json.dumps({'msg': '開始配對...'})}\n\n"
-        
         matcher = MalMatcher()
         results = []
         total = len(details)
@@ -101,7 +71,13 @@ def stream_progress():
         for i, item in enumerate(details):
             try:
                 mal_data, status = matcher.resolve_mal_id(item)
-                is_low = 'Low' in status or 'Not Found' in status
+                
+                # [核心邏輯判斷]
+                # 只有 "Cache Hit" 或 "G1: OK" 才是高信心度
+                is_low = True
+                if status and (status == "Cache Hit" or status == "G1: OK"):
+                    is_low = False
+                
                 img = mal_data.get('img_url', '') if mal_data else 'https://cdn.myanimelist.net/img/sp/icon/apple-touch-icon-256.png'
                 
                 row = {
@@ -119,12 +95,12 @@ def stream_progress():
                     'type': 'image',
                     'img_url': img,
                     'title': item['ch_name'],
+                    'status': status,
                     'is_low': is_low,
                     'current': i+1,
                     'total': total
                 })}\n\n"""
-            except:
-                continue
+            except: continue
         
         TEMP_RESULTS[user_id] = results
         yield f"data: {json.dumps({'done': True, 'redirect_url': final_url})}\n\n"
@@ -135,19 +111,19 @@ def stream_progress():
 @app.route('/select/<user_id>')
 def select_results(user_id):
     results = TEMP_RESULTS.get(user_id)
-    if not results:
-        return redirect(url_for('index'))
-    return render_template('select.html', results=results, user_id=user_id)
+    if not results: return redirect(url_for('index'))
+    saved_sel = USER_SELECTIONS.get(user_id)
+    return render_template('select.html', results=results, user_id=user_id, saved_sel=saved_sel)
 
 @app.route('/dispatch_action', methods=['POST'])
 def dispatch_action():
     user_id = request.form.get('user_id')
     selected = request.form.getlist('selected_items')
     action = request.form.get('action')
+    USER_SELECTIONS[user_id] = selected
     
     raw = TEMP_RESULTS.get(user_id)
     if not raw: return redirect(url_for('index'))
-    
     final = []
     for i in selected:
         try:
@@ -160,88 +136,57 @@ def dispatch_action():
         xml_data = [{'mal_id': i['mal_id'], 'title': i['mal_title']} for i in final]
         FINAL_RESULTS[user_id] = gen.generate_xml(xml_data, user_id)
         return redirect(url_for('show_xml_result', user_id=user_id))
-        
     elif action == 'music':
-        MUSIC_QUEUE[user_id] = [{'mal_id': i['mal_id'], 'title': i['mal_title']} for i in final]
+        # [中文標題] 下載時使用 baha_title
+        MUSIC_QUEUE[user_id] = [{'mal_id': i['mal_id'], 'title': i['baha_title']} for i in final]
         return render_template('music_processing.html', user_id=user_id)
-        
     return redirect(url_for('index'))
 
 @app.route('/result_xml/<user_id>')
 def show_xml_result(user_id):
-    if user_id not in FINAL_RESULTS:
-        return redirect(url_for('index'))
+    if user_id not in FINAL_RESULTS: return redirect(url_for('index'))
     return render_template('result.html', user_id=user_id)
 
 @app.route('/download_xml_mem/<user_id>')
 def download_xml_mem(user_id):
     content = FINAL_RESULTS.get(user_id)
     if not content: return "無效請求", 404
-    
-    mem = io.BytesIO()
-    mem.write(content.encode('utf-8'))
-    mem.seek(0)
-    
-    return send_file(
-        mem,
-        as_attachment=True,
-        download_name=f"{user_id}_mal_import.xml",
-        mimetype='application/xml'
-    )
+    mem = io.BytesIO(); mem.write(content.encode('utf-8')); mem.seek(0)
+    return send_file(mem, as_attachment=True, download_name=f"{user_id}_mal_import.xml", mimetype='application/xml')
 
 @app.route('/stream_music_download')
 def stream_music_download():
     user_id = request.args.get('user_id')
     q = MUSIC_QUEUE.get(user_id)
-    
-    if not q:
-        return Response("data: "+json.dumps({'error':'排程已過期'})+"\n\n", mimetype='text/event-stream')
-    
+    if not q: return Response("data: "+json.dumps({'error':'過期'})+"\n\n", mimetype='text/event-stream')
     def generate():
         dl = ThemeDownloader(max_workers=16)
-        path = os.path.join(OUTPUT_FOLDER, f"{user_id}_anime_songs.zip")
         try:
-            for st in dl.download_and_zip_generator(q, path):
+            for st in dl.download_and_zip_generator(q, os.path.join(OUTPUT_FOLDER, f"{user_id}_anime_songs.zip")):
                 yield f"data: {json.dumps(st)}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        except Exception as e: yield f"data: {json.dumps({'error': str(e)})}\n\n"
         yield ": keep-alive\n\n"
-        
     return Response(generate(), mimetype='text/event-stream')
 
 @app.route('/download/<path:filename>')
 def download_file(filename):
     path = os.path.join(OUTPUT_FOLDER, filename)
     if not os.path.exists(path): return "檔案不存在", 404
-
     @after_this_request
     def remove_file(response):
         try: os.remove(path)
         except: pass
         return response
-
     return send_file(path, as_attachment=True)
 
-# [修正] 改為寫入 Google Sheets
 @app.route('/report_match', methods=['POST'])
 def report_match():
     data = request.json
     uid, idx, msg = data.get('user_id'), int(data.get('item_id')), data.get('message')
     res = TEMP_RESULTS.get(uid)
     if not res: return jsonify({'success': False})
-    
-    # 準備資料列
-    row = [
-        datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-        res[idx]['baha_title'],
-        str(res[idx]['mal_id']), # 轉字串避免格式問題
-        msg
-    ]
-    
-    # 呼叫 Sheets 寫入函式
+    row = [datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), res[idx]['baha_title'], str(res[idx]['mal_id']), msg]
     success = append_to_sheet(row)
-    
     return jsonify({'success': success})
 
-if __name__ == '__main__':
-    app.run(debug=True, port=5000, threaded=True)
+if __name__ == '__main__': app.run(debug=True, port=5000, threaded=True)
