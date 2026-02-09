@@ -116,23 +116,28 @@ class MalMatcher:
             return abs((api_date - target_date).days)
         except: return 99999
 
-    def check_animethemes(self, mal_id):
-        # 僅用單次檢查，不做重試
-        url = "https://api.animethemes.moe/anime"
-        params = {
-            "filter[has]": "resources",
-            "filter[site]": "MyAnimeList",
-            "filter[external_id]": mal_id,
-            "include": "animethemes"
-        }
-        try:
-            resp = requests.get(url, params=params, timeout=3)
-            if resp.status_code == 200:
-                data = resp.json()
-                if data.get('anime', []):
-                    return True
-        except: pass
-        return False
+    def check_animethemes(self, mal_id, retry=0):
+            url = "https://api.animethemes.moe/anime"
+            params = {
+                "filter[has]": "resources",
+                "filter[site]": "MyAnimeList",
+                "filter[external_id]": mal_id,
+                "include": "animethemes"
+            }
+            try:
+                resp = self.rq.get(url, params=params, timeout=5)
+                
+                if resp.status_code == 429:
+                    if retry > 2: return False
+                    time.sleep(1)
+                    return self.check_animethemes(mal_id, retry + 1)
+                
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get('anime', []):
+                        return True
+            except: pass
+            return False
 
     def resolve_mal_id(self, row):
         ch_name = row.get('ch_name', '').strip()
