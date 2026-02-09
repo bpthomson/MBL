@@ -68,7 +68,7 @@ class BahamutCrawler:
 
 
 # ==========================================
-# 2. MAL 配對器 (單次檢查版)
+# 2. MAL 配對器
 # ==========================================
 class MalMatcher:
     def __init__(self, cache_file='mal_id.csv'):
@@ -117,7 +117,7 @@ class MalMatcher:
         except: return 99999
 
     def check_animethemes(self, mal_id):
-        """檢查 AnimeThemes 是否有資源"""
+        # 僅用單次檢查，不做重試，避免拖慢配對速度
         url = "https://api.animethemes.moe/anime"
         params = {
             "filter[has]": "resources",
@@ -126,7 +126,7 @@ class MalMatcher:
             "include": "animethemes"
         }
         try:
-            resp = requests.get(url, params=params, timeout=3) # 使用 requests 原生庫加速
+            resp = requests.get(url, params=params, timeout=3)
             if resp.status_code == 200:
                 data = resp.json()
                 if data.get('anime', []):
@@ -154,7 +154,7 @@ class MalMatcher:
             try: target_date = datetime(row['year'], row.get('month', 1), row.get('day', 1))
             except: pass
 
-        # === 1. 搜尋並收集候選人 ===
+        # === 1. 搜尋 ===
         queries = []
         if row.get('jp_name'): queries.append((1, 'JP', self.clean_text(row['jp_name'])))
         if row.get('eng_name'): queries.append((2, 'ENG', self.clean_text(row['eng_name'])))
@@ -183,22 +183,20 @@ class MalMatcher:
         if not candidates:
             return None, "Not Found"
 
-        # === 2. 選出最佳候選人 (只看日期與優先級) ===
-        # 排序：優先級 > 日期差異
+        # === 2. 選出最佳候選人 ===
         candidates.sort(key=lambda x: (x['priority'], x['diff']))
         winner = candidates[0]
 
-        # === 3. 檢查資源並判定 Group ===
+        # === 3. 檢查資源 (只檢查最佳的) ===
         has_themes = self.check_animethemes(winner['mal_id'])
         status = ""
 
         if winner['diff'] <= 30:
             if has_themes:
-                status = "G1: OK" # 最佳狀態
+                status = "G1: OK"
             else:
-                status = "G2: Date OK / NoThemes" # 需要警告
+                status = "G2: Date OK / NoThemes"
         else:
-            # 日期不準，視為 G3 或 G4
             if has_themes:
                 status = f"G3: Diff {winner['diff']}d / HasThemes"
             else:
@@ -222,21 +220,23 @@ class MalXmlGenerator:
             anime = ET.SubElement(root, "anime")
             ET.SubElement(anime, "series_animedb_id").text = str(data['mal_id'])
             ET.SubElement(anime, "series_title").text = str(data.get('title', 'Unknown'))
-            ET.SubElement(anime, "my_status").text = "6"
+            ET.SubElement(anime, "my_status").text = "Completed"
             ET.SubElement(anime, "my_watched_episodes").text = "0"
             ET.SubElement(anime, "my_start_date").text = "0000-00-00"
             ET.SubElement(anime, "my_finish_date").text = "0000-00-00"
             ET.SubElement(anime, "my_score").text = "0"
             ET.SubElement(anime, "update_on_import").text = "1"
 
+
         return minidom.parseString(ET.tostring(root)).toprettyxml(indent="    ")
 
 
 # ==========================================
-# 4. 主題曲下載器
+# 4. 主題曲下載器 (整合 API 查詢與下載)
 # ==========================================
 class ThemeDownloader:
-    def __init__(self, max_workers=16):
+
+    def __init__(self, max_workers=4):
         self.rq = cloudscraper.create_scraper()
         self.rq.headers.update({
             'User-Agent': 'Mozilla/5.0'
@@ -247,7 +247,8 @@ class ThemeDownloader:
     def sanitize_filename(self, name):
         return re.sub(r'[\\/*?:"<>|]', "", str(name)).strip()
 
-    def get_theme_links(self, mal_id):
+    # API 查詢 (含重試)
+    def get_theme_links(self, mal_id, retry=0):
         themes = []
         try:
             params = {
@@ -257,6 +258,13 @@ class ThemeDownloader:
                 "include": "animethemes,animethemes.song,animethemes.animethemeentries.videos.audio"
             }
             resp = self.rq.get(self.search_url, params=params, timeout=10)
+            
+            # 遇到 429 休息一下再重試
+            if resp.status_code == 429:
+                if retry >= 3: return []
+                time.sleep(2 * (retry + 1))
+                return self.get_theme_links(mal_id, retry + 1)
+                
             if resp.status_code != 200: return []
             data = resp.json().get('anime', [])
             if not data: return []
@@ -277,8 +285,8 @@ class ThemeDownloader:
             return themes
         except: return []
 
-    def _download(self, task):
-        url, path = task
+    # 單檔下載
+    def _download_file(self, url, path):
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with self.rq.get(url, stream=True, timeout=20) as r:
@@ -288,39 +296,58 @@ class ThemeDownloader:
         except: pass
         return False
 
+    # [關鍵修改] 整合任務：一個動畫 -> (查API -> 下載多首歌)
+    # 這樣可以利用「下載的時間」來錯開「查下一個動畫 API 的時間」
+    def process_anime_task(self, item, temp_dir):
+        # 1. 查 API (這最容易爆 Rate Limit)
+        songs = self.get_theme_links(item['mal_id'])
+        if not songs: return None
+        
+        # 2. 下載檔案 (這會花時間，變成天然的 Delay)
+        s_title = self.sanitize_filename(item['title'])
+        count = 0
+        for s in songs:
+            fname = f"{s['type']} - {self.sanitize_filename(s['title'])}.{s['ext']}"
+            full_path = os.path.join(temp_dir, s_title, fname)
+            if self._download_file(s['link'], full_path):
+                count += 1
+        
+        return {'title': s_title, 'count': count}
+
     def download_and_zip_generator(self, data_list, output_path):
-        yield {'msg': f"正在搜尋 {len(data_list)} 部動畫...", 'progress': '0%'}
+        yield {'msg': f"準備處理 {len(data_list)} 部動畫...", 'progress': '0%'}
+        
         with tempfile.TemporaryDirectory() as temp_dir:
-            tasks = []
+            # 使用 ThreadPoolExecutor 並行處理「查詢+下載」
             with ThreadPoolExecutor(max_workers=self.max_workers) as ex:
-                futures = {ex.submit(self.get_theme_links, i['mal_id']): i for i in data_list}
-                done = 0
+                # 提交所有動畫任務
+                futures = {ex.submit(self.process_anime_task, item, temp_dir): item for item in data_list}
+                
+                done_count = 0
+                total = len(data_list)
+                
                 for f in as_completed(futures):
-                    item = futures[f]
-                    done += 1
+                    done_count += 1
+                    item_info = futures[f] # 原本的資料
                     try:
-                        songs = f.result()
-                        if songs:
-                            s_title = self.sanitize_filename(item['title'])
-                            for s in songs:
-                                fname = f"{s['type']} - {self.sanitize_filename(s['title'])}.{s['ext']}"
-                                tasks.append((s['link'], os.path.join(temp_dir, s_title, fname), f"{s_title[:10]}.."))
-                    except: pass
-                    yield {'msg': f"搜尋中: {item['title']}", 'progress': f"{int(done/len(data_list)*20)}%"}
+                        result = f.result()
+                        # 計算進度：0% ~ 90%
+                        progress_val = int((done_count / total) * 90)
+                        
+                        if result and result['count'] > 0:
+                            yield {
+                                'msg': f"[{done_count}/{total}] 下載: {result['title']} ({result['count']}首)", 
+                                'progress': f"{progress_val}%"
+                            }
+                        else:
+                            yield {
+                                'msg': f"[{done_count}/{total}] 跳過: {item_info['title']} (無音源)", 
+                                'progress': f"{progress_val}%"
+                            }
+                    except Exception as e:
+                        yield {'msg': f"錯誤: {str(e)}", 'progress': f"{int((done_count/total)*90)}%"}
 
-            if not tasks:
-                yield {'msg': "無可下載音樂", 'progress': '100%', 'error': True}; return
-
-            yield {'msg': f"找到 {len(tasks)} 首歌，下載中...", 'progress': '20%'}
-            with ThreadPoolExecutor(max_workers=self.max_workers) as ex:
-                fs = [ex.submit(self._download, (u, p)) for u, p, n in tasks]
-                done = 0
-                for f in as_completed(fs):
-                    done += 1
-                    if done % 3 == 0 or done == len(tasks):
-                        yield {'msg': f"下載進度 {done}/{len(tasks)}", 'progress': f"{20+int(done/len(tasks)*75)}%"}
-            
-            yield {'msg': "打包中...", 'progress': '95%'}
+            yield {'msg': "打包壓縮中...", 'progress': '95%'}
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             with ZipFile(output_path, 'w', compression=ZIP_DEFLATED) as z:
                 for root, dirs, files in os.walk(temp_dir):
