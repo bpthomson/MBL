@@ -4,13 +4,14 @@ import os
 import json
 import traceback
 import io
+import uuid
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from flask import Flask, render_template, request, send_file, Response, redirect, url_for, jsonify, after_this_request
+from flask import Flask, render_template, request, send_file, Response, redirect, url_for, jsonify, after_this_request, session
 from core_logic import BahamutCrawler, MalMatcher, MalXmlGenerator, ThemeDownloader
 
 app = Flask(__name__)
-app.secret_key = 'secret'
+app.secret_key = 'secret_key_for_session_management' 
 
 OUTPUT_FOLDER = 'outputs'
 TEMP_RESULTS = {}
@@ -21,6 +22,12 @@ USER_SELECTIONS = {}
 SPREADSHEET_NAME = 'MyBahaList_Reports' 
 
 if not os.path.exists(OUTPUT_FOLDER): os.makedirs(OUTPUT_FOLDER)
+
+@app.before_request
+def ensure_session_id():
+    session.permanent = True
+    if 'uid' not in session:
+        session['uid'] = str(uuid.uuid4())
 
 def append_to_sheet(data_row):
     try:
@@ -46,11 +53,14 @@ def index():
 def stream_progress():
     user_id = request.args.get('user_id', '').strip()
     limit = request.args.get('limit')
+    
+    sid = session['uid']
+
     try: final_url = url_for('select_results', user_id=user_id)
     except: return Response("data: error\n\n", mimetype='text/event-stream')
 
     def generate():
-        if user_id in USER_SELECTIONS: del USER_SELECTIONS[user_id]
+        if sid in USER_SELECTIONS: del USER_SELECTIONS[sid]
         
         crawler = BahamutCrawler(user_id)
         try: collections = crawler.get_collections()
@@ -72,10 +82,10 @@ def stream_progress():
             try:
                 mal_data, status = matcher.resolve_mal_id(item)
                 
-                # [核心邏輯判斷]
-                # 只有 "Cache Hit" 或 "G1: OK" 才是高信心度
+                # [修改] 判斷信心度
+                # 只有 "Cache Hit" 或 "High Confidence" (Group 1 + 有歌) 才是綠燈
                 is_low = True
-                if status and (status == "Cache Hit" or status == "G1: OK"):
+                if status and (status == "Cache Hit" or status == "High Confidence"):
                     is_low = False
                 
                 img = mal_data.get('img_url', '') if mal_data else 'https://cdn.myanimelist.net/img/sp/icon/apple-touch-icon-256.png'
@@ -102,7 +112,7 @@ def stream_progress():
                 })}\n\n"""
             except: continue
         
-        TEMP_RESULTS[user_id] = results
+        TEMP_RESULTS[sid] = results
         yield f"data: {json.dumps({'done': True, 'redirect_url': final_url})}\n\n"
         yield ": keep-alive\n\n"
 
@@ -110,9 +120,11 @@ def stream_progress():
 
 @app.route('/select/<user_id>')
 def select_results(user_id):
-    results = TEMP_RESULTS.get(user_id)
+    sid = session['uid']
+    results = TEMP_RESULTS.get(sid)
+    
     if not results: return redirect(url_for('index'))
-    saved_sel = USER_SELECTIONS.get(user_id)
+    saved_sel = USER_SELECTIONS.get(sid)
     return render_template('select.html', results=results, user_id=user_id, saved_sel=saved_sel)
 
 @app.route('/dispatch_action', methods=['POST'])
@@ -120,9 +132,11 @@ def dispatch_action():
     user_id = request.form.get('user_id')
     selected = request.form.getlist('selected_items')
     action = request.form.get('action')
-    USER_SELECTIONS[user_id] = selected
     
-    raw = TEMP_RESULTS.get(user_id)
+    sid = session['uid']
+    USER_SELECTIONS[sid] = selected
+    
+    raw = TEMP_RESULTS.get(sid)
     if not raw: return redirect(url_for('index'))
     final = []
     for i in selected:
@@ -134,22 +148,23 @@ def dispatch_action():
     if action == 'xml':
         gen = MalXmlGenerator()
         xml_data = [{'mal_id': i['mal_id'], 'title': i['mal_title']} for i in final]
-        FINAL_RESULTS[user_id] = gen.generate_xml(xml_data, user_id)
+        FINAL_RESULTS[sid] = gen.generate_xml(xml_data, user_id)
         return redirect(url_for('show_xml_result', user_id=user_id))
     elif action == 'music':
-        # [中文標題] 下載時使用 baha_title
-        MUSIC_QUEUE[user_id] = [{'mal_id': i['mal_id'], 'title': i['baha_title']} for i in final]
+        MUSIC_QUEUE[sid] = [{'mal_id': i['mal_id'], 'title': i['baha_title']} for i in final]
         return render_template('music_processing.html', user_id=user_id)
     return redirect(url_for('index'))
 
 @app.route('/result_xml/<user_id>')
 def show_xml_result(user_id):
-    if user_id not in FINAL_RESULTS: return redirect(url_for('index'))
+    sid = session['uid']
+    if sid not in FINAL_RESULTS: return redirect(url_for('index'))
     return render_template('result.html', user_id=user_id)
 
 @app.route('/download_xml_mem/<user_id>')
 def download_xml_mem(user_id):
-    content = FINAL_RESULTS.get(user_id)
+    sid = session['uid']
+    content = FINAL_RESULTS.get(sid)
     if not content: return "無效請求", 404
     mem = io.BytesIO(); mem.write(content.encode('utf-8')); mem.seek(0)
     return send_file(mem, as_attachment=True, download_name=f"{user_id}_mal_import.xml", mimetype='application/xml')
@@ -157,10 +172,13 @@ def download_xml_mem(user_id):
 @app.route('/stream_music_download')
 def stream_music_download():
     user_id = request.args.get('user_id')
-    q = MUSIC_QUEUE.get(user_id)
+    sid = session['uid']
+    
+    q = MUSIC_QUEUE.get(sid)
     if not q: return Response("data: "+json.dumps({'error':'過期'})+"\n\n", mimetype='text/event-stream')
+    
     def generate():
-        dl = ThemeDownloader(max_workers=16)
+        dl = ThemeDownloader(max_workers=3) 
         try:
             for st in dl.download_and_zip_generator(q, os.path.join(OUTPUT_FOLDER, f"{user_id}_anime_songs.zip")):
                 yield f"data: {json.dumps(st)}\n\n"
@@ -182,8 +200,12 @@ def download_file(filename):
 @app.route('/report_match', methods=['POST'])
 def report_match():
     data = request.json
-    uid, idx, msg = data.get('user_id'), int(data.get('item_id')), data.get('message')
-    res = TEMP_RESULTS.get(uid)
+    uid = data.get('user_id')
+    sid = session['uid']
+    
+    idx, msg = int(data.get('item_id')), data.get('message')
+    res = TEMP_RESULTS.get(sid)
+    
     if not res: return jsonify({'success': False})
     row = [datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), res[idx]['baha_title'], str(res[idx]['mal_id']), msg]
     success = append_to_sheet(row)

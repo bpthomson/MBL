@@ -68,7 +68,7 @@ class BahamutCrawler:
 
 
 # ==========================================
-# 2. MAL 配對器
+# 2. MAL 配對器 (交錯排序 + 分組邏輯)
 # ==========================================
 class MalMatcher:
     def __init__(self, cache_file='mal_id.csv'):
@@ -117,7 +117,7 @@ class MalMatcher:
         except: return 99999
 
     def check_animethemes(self, mal_id):
-        # 僅用單次檢查，不做重試，避免拖慢配對速度
+        # 僅用單次檢查，不做重試
         url = "https://api.animethemes.moe/anime"
         params = {
             "filter[has]": "resources",
@@ -148,13 +148,11 @@ class MalMatcher:
                 'img_url': img
             }, "Cache Hit"
 
-        # === 準備日期 ===
         target_date = None
         if row.get('year'):
             try: target_date = datetime(row['year'], row.get('month', 1), row.get('day', 1))
             except: pass
 
-        # === 1. 搜尋 ===
         queries = []
         if row.get('jp_name'): queries.append((1, 'JP', self.clean_text(row['jp_name'])))
         if row.get('eng_name'): queries.append((2, 'ENG', self.clean_text(row['eng_name'])))
@@ -164,43 +162,52 @@ class MalMatcher:
 
         for priority, src, q in queries:
             results = self.search_jikan(q)
-            for res in results:
+            # idx 代表該結果在 Jikan 回傳列表中的原始排名 (0, 1, 2...)
+            for idx, res in enumerate(results):
                 if str(res.get('type')).upper() not in self.allowed_types: continue
                 if res['mal_id'] in seen_ids: continue
                 seen_ids.add(res['mal_id'])
 
                 diff = self.get_days_diff(res.get('aired', {}).get('from'), target_date)
                 
+                # 判斷是否為 Group 1 (30天內)
+                is_group_1 = (diff <= 30)
+
                 candidates.append({
-                    'priority': priority,
-                    'diff': diff,
                     'mal_id': res['mal_id'],
                     'title': res['title'],
                     'img_url': res.get('images', {}).get('jpg', {}).get('image_url'),
-                    'url': res['url']
+                    'url': res['url'],
+                    'diff': diff,
+                    'is_group_1': is_group_1,
+                    'priority': priority, # 1=JP, 2=ENG
+                    'idx': idx            # Jikan 原始排名
                 })
 
         if not candidates:
             return None, "Not Found"
-
-        # === 2. 選出最佳候選人 ===
-        candidates.sort(key=lambda x: (x['priority'], x['diff']))
+        
+        candidates.sort(key=lambda x: (
+            0 if x['is_group_1'] else 1, 
+            x['idx'], 
+            x['priority']
+        ))
+        
         winner = candidates[0]
 
-        # === 3. 檢查資源 (只檢查最佳的) ===
+        # === 3. 音源驗證與狀態判定 ===
         has_themes = self.check_animethemes(winner['mal_id'])
         status = ""
 
-        if winner['diff'] <= 30:
-            if has_themes:
-                status = "G1: OK"
-            else:
-                status = "G2: Date OK / NoThemes"
+        # 安全判定：必須在 Group 1 且有歌
+        if winner['is_group_1'] and has_themes:
+            status = "High Confidence"
         else:
-            if has_themes:
-                status = f"G3: Diff {winner['diff']}d / HasThemes"
+            # 產生詳細的警告原因
+            if not winner['is_group_1']:
+                status = f"Low Confidence (Diff {winner['diff']} days)"
             else:
-                status = f"G4: Diff {winner['diff']}d / NoThemes"
+                status = "Low Confidence (No Audio)" # 雖然日期對但沒歌
 
         return winner, status
 
@@ -227,7 +234,6 @@ class MalXmlGenerator:
             ET.SubElement(anime, "my_score").text = "0"
             ET.SubElement(anime, "update_on_import").text = "1"
 
-
         return minidom.parseString(ET.tostring(root)).toprettyxml(indent="    ")
 
 
@@ -235,8 +241,8 @@ class MalXmlGenerator:
 # 4. 主題曲下載器 (整合 API 查詢與下載)
 # ==========================================
 class ThemeDownloader:
-
-    def __init__(self, max_workers=4):
+    # 預設 worker 為 3 (安全且有效率)
+    def __init__(self, max_workers=3):
         self.rq = cloudscraper.create_scraper()
         self.rq.headers.update({
             'User-Agent': 'Mozilla/5.0'
@@ -296,14 +302,13 @@ class ThemeDownloader:
         except: pass
         return False
 
-    # [關鍵修改] 整合任務：一個動畫 -> (查API -> 下載多首歌)
-    # 這樣可以利用「下載的時間」來錯開「查下一個動畫 API 的時間」
+    # 整合任務
     def process_anime_task(self, item, temp_dir):
-        # 1. 查 API (這最容易爆 Rate Limit)
+        # 1. 查 API
         songs = self.get_theme_links(item['mal_id'])
         if not songs: return None
         
-        # 2. 下載檔案 (這會花時間，變成天然的 Delay)
+        # 2. 下載檔案 (天然 Delay)
         s_title = self.sanitize_filename(item['title'])
         count = 0
         for s in songs:
@@ -318,9 +323,7 @@ class ThemeDownloader:
         yield {'msg': f"準備處理 {len(data_list)} 部動畫...", 'progress': '0%'}
         
         with tempfile.TemporaryDirectory() as temp_dir:
-            # 使用 ThreadPoolExecutor 並行處理「查詢+下載」
             with ThreadPoolExecutor(max_workers=self.max_workers) as ex:
-                # 提交所有動畫任務
                 futures = {ex.submit(self.process_anime_task, item, temp_dir): item for item in data_list}
                 
                 done_count = 0
@@ -328,10 +331,9 @@ class ThemeDownloader:
                 
                 for f in as_completed(futures):
                     done_count += 1
-                    item_info = futures[f] # 原本的資料
+                    item_info = futures[f]
                     try:
                         result = f.result()
-                        # 計算進度：0% ~ 90%
                         progress_val = int((done_count / total) * 90)
                         
                         if result and result['count'] > 0:
