@@ -5,6 +5,7 @@ import json
 import traceback
 import io
 import uuid
+import threading
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from flask import Flask, render_template, request, send_file, Response, redirect, url_for, jsonify, after_this_request, session
@@ -14,12 +15,15 @@ app = Flask(__name__)
 app.secret_key = 'secret_key_for_session_management' 
 
 OUTPUT_FOLDER = 'outputs'
+# 使用 Session ID (UUID) 作為 Key
 TEMP_RESULTS = {}
 FINAL_RESULTS = {}
 MUSIC_QUEUE = {}
 USER_SELECTIONS = {} 
 
 SPREADSHEET_NAME = 'MyBahaList_Reports' 
+CANDIDATE_SHEET_NAME = 'Cache_Candidates'     # 高信心度
+DEBUG_SHEET_NAME = 'Low_Confidence_Debug'     # 低信心度
 
 if not os.path.exists(OUTPUT_FOLDER): os.makedirs(OUTPUT_FOLDER)
 
@@ -29,16 +33,75 @@ def ensure_session_id():
     if 'uid' not in session:
         session['uid'] = str(uuid.uuid4())
 
+# [補回] 用於處理使用者手動「回報錯誤」的函式
 def append_to_sheet(data_row):
     try:
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
         if not os.path.exists('credentials.json'): return False
         creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
         client = gspread.authorize(creds)
+        # 預設寫入第一個工作表 (sheet1)
         sheet = client.open(SPREADSHEET_NAME).sheet1
         sheet.append_row(data_row)
         return True
-    except: return False
+    except Exception as e:
+        print(f"[Sheet Error] {e}")
+        return False
+
+# 用於背景自動上傳「候選名單」與「除錯清單」的函式
+def log_candidates_to_sheet(candidates):
+    if not candidates: return
+    try:
+        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+        if not os.path.exists('credentials.json'): return
+        creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+        client = gspread.authorize(creds)
+        
+        sheet = client.open(SPREADSHEET_NAME)
+        
+        high_conf_rows = []
+        low_conf_rows = []
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        for item in candidates:
+            img_url = item["img_url"]
+            # 使用 HYPERLINK 讓圖片可點擊查看大圖
+            img_formula = f'=HYPERLINK("{img_url}", IMAGE("{img_url}"))'
+            
+            row_data = [
+                now,
+                item['baha_title'],
+                str(item['mal_id']),
+                item['mal_title'],
+                img_url,
+                img_formula,
+                item['status']
+            ]
+            
+            if item['status'] == "High Confidence":
+                high_conf_rows.append(row_data)
+            else:
+                low_conf_rows.append(row_data)
+
+        def write_rows(sheet_name, data):
+            if not data: return
+            try:
+                ws = sheet.worksheet(sheet_name)
+            except:
+                ws = sheet.add_worksheet(title=sheet_name, rows="1000", cols="10")
+                ws.append_row(['Time', 'CH Title', 'MAL ID', 'MAL Title', 'Img URL', 'Preview', 'Status'])
+            ws.append_rows(data, value_input_option='USER_ENTERED')
+            
+        if high_conf_rows:
+            write_rows(CANDIDATE_SHEET_NAME, high_conf_rows)
+            print(f"[Log] 上傳 {len(high_conf_rows)} 筆 High Confidence 資料")
+            
+        if low_conf_rows:
+            write_rows(DEBUG_SHEET_NAME, low_conf_rows)
+            print(f"[Log] 上傳 {len(low_conf_rows)} 筆 Low Confidence 資料")
+            
+    except Exception as e:
+        print(f"[Log Error] 上傳失敗: {e}")
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -76,14 +139,15 @@ def stream_progress():
         yield f"data: {json.dumps({'msg': '開始配對...'})}\n\n"
         matcher = MalMatcher()
         results = []
+        
+        new_candidates = []
+        
         total = len(details)
         
         for i, item in enumerate(details):
             try:
                 mal_data, status = matcher.resolve_mal_id(item)
                 
-                # [修改] 判斷信心度
-                # 只有 "Cache Hit" 或 "High Confidence" (Group 1 + 有歌) 才是綠燈
                 is_low = True
                 if status and (status == "Cache Hit" or status == "High Confidence"):
                     is_low = False
@@ -101,6 +165,10 @@ def stream_progress():
                 }
                 results.append(row)
                 
+                # 如果不是快取命中，加入候選名單
+                if status != "Cache Hit" and mal_data:
+                    new_candidates.append(row)
+
                 yield f"""data: {json.dumps({
                     'type': 'image',
                     'img_url': img,
@@ -113,6 +181,10 @@ def stream_progress():
             except: continue
         
         TEMP_RESULTS[sid] = results
+        
+        if new_candidates:
+            threading.Thread(target=log_candidates_to_sheet, args=(new_candidates,)).start()
+
         yield f"data: {json.dumps({'done': True, 'redirect_url': final_url})}\n\n"
         yield ": keep-alive\n\n"
 
