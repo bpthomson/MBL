@@ -13,9 +13,7 @@ import cloudscraper
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 
-# ==========================================
-# 1. 巴哈姆特爬蟲
-# ==========================================
+# ... (BahamutCrawler 保持不變) ...
 class BahamutCrawler:
     def __init__(self, user_id):
         self.user_id = user_id
@@ -68,7 +66,7 @@ class BahamutCrawler:
 
 
 # ==========================================
-# 2. MAL 配對器 (交錯排序 + 分組邏輯)
+# 2. MAL 配對器 (升級 Cache 讀取邏輯)
 # ==========================================
 class MalMatcher:
     def __init__(self, cache_file='mal_id.csv'):
@@ -86,9 +84,14 @@ class MalMatcher:
                     reader = csv.DictReader(f)
                     for row in reader:
                         if row.get('ch_name') and row.get('mal_id'):
+                            # [修改] 嘗試讀取 mal_title，如果舊版 CSV 沒有這個欄位，暫時用中文名代替
+                            mal_title = row.get('mal_title')
+                            if not mal_title: mal_title = row['ch_name']
+
                             self.cache[row['ch_name'].strip()] = {
                                 'mal_id': int(row['mal_id']),
-                                'img_url': row.get('img_url', '')
+                                'img_url': row.get('img_url', ''),
+                                'mal_title': mal_title # 存入記憶體
                             }
             except: pass
 
@@ -117,27 +120,26 @@ class MalMatcher:
         except: return 99999
 
     def check_animethemes(self, mal_id, retry=0):
-            url = "https://api.animethemes.moe/anime"
-            params = {
-                "filter[has]": "resources",
-                "filter[site]": "MyAnimeList",
-                "filter[external_id]": mal_id,
-                "include": "animethemes"
-            }
-            try:
-                resp = self.rq.get(url, params=params, timeout=5)
-                
-                if resp.status_code == 429:
-                    if retry > 2: return False
-                    time.sleep(1)
-                    return self.check_animethemes(mal_id, retry + 1)
-                
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if data.get('anime', []):
-                        return True
-            except: pass
-            return False
+        url = "https://api.animethemes.moe/anime"
+        params = {
+            "filter[has]": "resources",
+            "filter[site]": "MyAnimeList",
+            "filter[external_id]": mal_id,
+            "include": "animethemes"
+        }
+        try:
+            resp = self.rq.get(url, params=params, timeout=5)
+            if resp.status_code == 429:
+                if retry > 2: return False
+                time.sleep(1)
+                return self.check_animethemes(mal_id, retry + 1)
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get('anime', []):
+                    return True
+        except: pass
+        return False
 
     def resolve_mal_id(self, row):
         ch_name = row.get('ch_name', '').strip()
@@ -148,11 +150,12 @@ class MalMatcher:
             img = c.get('img_url') or 'https://cdn.myanimelist.net/img/sp/icon/apple-touch-icon-256.png'
             return {
                 'mal_id': c['mal_id'],
-                'title': ch_name,
+                'title': c['mal_title'], # [修改] 這裡現在會回傳真正的 MAL 標題
                 'url': f"https://myanimelist.net/anime/{c['mal_id']}",
                 'img_url': img
             }, "Cache Hit"
 
+        # ... (以下搜尋邏輯保持不變) ...
         target_date = None
         if row.get('year'):
             try: target_date = datetime(row['year'], row.get('month', 1), row.get('day', 1))
@@ -167,15 +170,12 @@ class MalMatcher:
 
         for priority, src, q in queries:
             results = self.search_jikan(q)
-            # idx 代表該結果在 Jikan 回傳列表中的原始排名 (0, 1, 2...)
             for idx, res in enumerate(results):
                 if str(res.get('type')).upper() not in self.allowed_types: continue
                 if res['mal_id'] in seen_ids: continue
                 seen_ids.add(res['mal_id'])
 
                 diff = self.get_days_diff(res.get('aired', {}).get('from'), target_date)
-                
-                # 判斷是否為 Group 1 (30天內)
                 is_group_1 = (diff <= 30)
 
                 candidates.append({
@@ -185,13 +185,13 @@ class MalMatcher:
                     'url': res['url'],
                     'diff': diff,
                     'is_group_1': is_group_1,
-                    'priority': priority, # 1=JP, 2=ENG
-                    'idx': idx            # Jikan 原始排名
+                    'priority': priority, 
+                    'idx': idx            
                 })
 
         if not candidates:
             return None, "Not Found"
-        
+
         candidates.sort(key=lambda x: (
             0 if x['is_group_1'] else 1, 
             x['idx'], 
@@ -200,19 +200,16 @@ class MalMatcher:
         
         winner = candidates[0]
 
-        # === 3. 音源驗證與狀態判定 ===
         has_themes = self.check_animethemes(winner['mal_id'])
         status = ""
 
-        # 安全判定：必須在 Group 1 且有歌
         if winner['is_group_1'] and has_themes:
             status = "High Confidence"
         else:
-            # 產生詳細的警告原因
             if not winner['is_group_1']:
                 status = f"Low Confidence (Diff {winner['diff']} days)"
             else:
-                status = "Low Confidence (No Audio)" # 雖然日期對但沒歌
+                status = "Low Confidence (No Audio)"
 
         return winner, status
 
@@ -243,10 +240,9 @@ class MalXmlGenerator:
 
 
 # ==========================================
-# 4. 主題曲下載器 (整合 API 查詢與下載)
+# 4. 主題曲下載器
 # ==========================================
 class ThemeDownloader:
-    # 預設 worker 為 3 (安全且有效率)
     def __init__(self, max_workers=3):
         self.rq = cloudscraper.create_scraper()
         self.rq.headers.update({
@@ -258,7 +254,6 @@ class ThemeDownloader:
     def sanitize_filename(self, name):
         return re.sub(r'[\\/*?:"<>|]', "", str(name)).strip()
 
-    # API 查詢 (含重試)
     def get_theme_links(self, mal_id, retry=0):
         themes = []
         try:
@@ -270,7 +265,6 @@ class ThemeDownloader:
             }
             resp = self.rq.get(self.search_url, params=params, timeout=10)
             
-            # 遇到 429 休息一下再重試
             if resp.status_code == 429:
                 if retry >= 3: return []
                 time.sleep(2 * (retry + 1))
@@ -296,7 +290,6 @@ class ThemeDownloader:
             return themes
         except: return []
 
-    # 單檔下載
     def _download_file(self, url, path):
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -307,13 +300,10 @@ class ThemeDownloader:
         except: pass
         return False
 
-    # 整合任務
     def process_anime_task(self, item, temp_dir):
-        # 1. 查 API
         songs = self.get_theme_links(item['mal_id'])
         if not songs: return None
         
-        # 2. 下載檔案 (天然 Delay)
         s_title = self.sanitize_filename(item['title'])
         count = 0
         for s in songs:

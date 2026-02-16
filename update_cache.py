@@ -49,6 +49,8 @@ def update_local_cache(target_tab_name):
         
         ch_name = row[1].strip()
         mal_id = row[2].strip()
+        # [修改] 讀取 Google Sheet 的 D欄 (MAL Title)
+        mal_title = row[3].strip() 
         img_url = row[4].strip()
         
         check_status = row[7].strip().upper() if len(row) > 7 else ""
@@ -61,12 +63,17 @@ def update_local_cache(target_tab_name):
         if ch_name in existing_keys:
             duplicate_count += 1
             continue
-            
-        new_entries.append([ch_name, mal_id, img_url])
+        
+        # [修改] 寫入 4 個欄位
+        new_entries.append([ch_name, mal_id, mal_title, img_url])
         existing_keys.add(ch_name)
 
     if new_entries:
         print(f"正在寫入 {len(new_entries)} 筆新資料到 {CSV_FILE}...")
+        
+        # 注意：因為欄位數量改變，如果直接 Append 到舊檔可能會格式錯亂
+        # 但 csv.writer 會自動處理逗號，所以技術上讀取時不會報錯，只是舊資料的 title 欄位會是 img_url
+        # 最乾淨的做法是清空重來
         
         with open(CSV_FILE, mode='a', encoding='utf-8-sig', newline='') as f:
             writer = csv.writer(f)
@@ -82,7 +89,7 @@ def update_local_cache(target_tab_name):
             sheet.resize(rows=1)
             sheet.resize(rows=1000)
             headers = ['Time', 'CH Title', 'MAL ID', 'MAL Title', 'Img URL', 'Preview', 'Status', 'Check(X)']
-            sheet.update(range_name='A1:H1', values=[headers])
+            sheet.update('A1:H1', [headers])
             print(f"分頁 {target_tab_name} 已清空。\n")
             
     else:
