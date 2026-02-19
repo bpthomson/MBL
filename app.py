@@ -1,107 +1,32 @@
-import csv
 import datetime
 import os
 import json
-import traceback
-import io
 import uuid
 import threading
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+import io
 from flask import Flask, render_template, request, send_file, Response, redirect, url_for, jsonify, after_this_request, session
+
+from config import Config
 from core_logic import BahamutCrawler, MalMatcher, MalXmlGenerator, ThemeDownloader
+from services.sheets_service import append_to_sheet, log_candidates_to_sheet
 
 app = Flask(__name__)
-app.secret_key = 'secret_key_for_session_management' 
+app.config.from_object(Config)
+app.secret_key = app.config['SECRET_KEY']
 
-OUTPUT_FOLDER = 'outputs'
-# 使用 Session ID (UUID) 作為 Key
+if not os.path.exists(app.config['OUTPUT_FOLDER']): 
+    os.makedirs(app.config['OUTPUT_FOLDER'])
+
 TEMP_RESULTS = {}
 FINAL_RESULTS = {}
 MUSIC_QUEUE = {}
 USER_SELECTIONS = {} 
-
-SPREADSHEET_NAME = 'MyBahaList_Reports' 
-CANDIDATE_SHEET_NAME = 'Cache_Candidates'     # 高信心度
-DEBUG_SHEET_NAME = 'Low_Confidence_Debug'     # 低信心度
-
-if not os.path.exists(OUTPUT_FOLDER): os.makedirs(OUTPUT_FOLDER)
 
 @app.before_request
 def ensure_session_id():
     session.permanent = True
     if 'uid' not in session:
         session['uid'] = str(uuid.uuid4())
-
-# [補回] 用於處理使用者手動「回報錯誤」的函式
-def append_to_sheet(data_row):
-    try:
-        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-        if not os.path.exists('credentials.json'): return False
-        creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
-        client = gspread.authorize(creds)
-        # 預設寫入第一個工作表 (sheet1)
-        sheet = client.open(SPREADSHEET_NAME).sheet1
-        sheet.append_row(data_row)
-        return True
-    except Exception as e:
-        print(f"[Sheet Error] {e}")
-        return False
-
-# 用於背景自動上傳「候選名單」與「除錯清單」的函式
-def log_candidates_to_sheet(candidates):
-    if not candidates: return
-    try:
-        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-        if not os.path.exists('credentials.json'): return
-        creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
-        client = gspread.authorize(creds)
-        
-        sheet = client.open(SPREADSHEET_NAME)
-        
-        high_conf_rows = []
-        low_conf_rows = []
-        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        
-        for item in candidates:
-            img_url = item["img_url"]
-            # 使用 HYPERLINK 讓圖片可點擊查看大圖
-            img_formula = f'=HYPERLINK("{img_url}", IMAGE("{img_url}"))'
-            
-            row_data = [
-                now,
-                item['baha_title'],
-                str(item['mal_id']),
-                item['mal_title'],
-                img_url,
-                img_formula,
-                item['status']
-            ]
-            
-            if item['status'] == "High Confidence":
-                high_conf_rows.append(row_data)
-            else:
-                low_conf_rows.append(row_data)
-
-        def write_rows(sheet_name, data):
-            if not data: return
-            try:
-                ws = sheet.worksheet(sheet_name)
-            except:
-                ws = sheet.add_worksheet(title=sheet_name, rows="1000", cols="10")
-                ws.append_row(['Time', 'CH Title', 'MAL ID', 'MAL Title', 'Img URL', 'Preview', 'Status'])
-            ws.append_rows(data, value_input_option='USER_ENTERED')
-            
-        if high_conf_rows:
-            write_rows(CANDIDATE_SHEET_NAME, high_conf_rows)
-            print(f"[Log] 上傳 {len(high_conf_rows)} 筆 High Confidence 資料")
-            
-        if low_conf_rows:
-            write_rows(DEBUG_SHEET_NAME, low_conf_rows)
-            print(f"[Log] 上傳 {len(low_conf_rows)} 筆 Low Confidence 資料")
-            
-    except Exception as e:
-        print(f"[Log Error] 上傳失敗: {e}")
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -116,7 +41,6 @@ def index():
 def stream_progress():
     user_id = request.args.get('user_id', '').strip()
     limit = request.args.get('limit')
-    
     sid = session['uid']
 
     try: final_url = url_for('select_results', user_id=user_id)
@@ -139,15 +63,12 @@ def stream_progress():
         yield f"data: {json.dumps({'msg': '開始配對...'})}\n\n"
         matcher = MalMatcher()
         results = []
-        
         new_candidates = []
-        
         total = len(details)
         
         for i, item in enumerate(details):
             try:
                 mal_data, status = matcher.resolve_mal_id(item)
-                
                 is_low = True
                 if status and (status == "Cache Hit" or status == "High Confidence"):
                     is_low = False
@@ -165,7 +86,6 @@ def stream_progress():
                 }
                 results.append(row)
                 
-                # 如果不是快取命中，加入候選名單
                 if status != "Cache Hit" and mal_data:
                     new_candidates.append(row)
 
@@ -194,7 +114,6 @@ def stream_progress():
 def select_results(user_id):
     sid = session['uid']
     results = TEMP_RESULTS.get(sid)
-    
     if not results: return redirect(url_for('index'))
     saved_sel = USER_SELECTIONS.get(sid)
     return render_template('select.html', results=results, user_id=user_id, saved_sel=saved_sel)
@@ -204,7 +123,6 @@ def dispatch_action():
     user_id = request.form.get('user_id')
     selected = request.form.getlist('selected_items')
     action = request.form.get('action')
-    
     sid = session['uid']
     USER_SELECTIONS[sid] = selected
     
@@ -245,14 +163,13 @@ def download_xml_mem(user_id):
 def stream_music_download():
     user_id = request.args.get('user_id')
     sid = session['uid']
-    
     q = MUSIC_QUEUE.get(sid)
     if not q: return Response("data: "+json.dumps({'error':'過期'})+"\n\n", mimetype='text/event-stream')
     
     def generate():
         dl = ThemeDownloader(max_workers=3) 
         try:
-            for st in dl.download_and_zip_generator(q, os.path.join(OUTPUT_FOLDER, f"{user_id}_anime_songs.zip")):
+            for st in dl.download_and_zip_generator(q, os.path.join(app.config['OUTPUT_FOLDER'], f"{user_id}_anime_songs.zip")):
                 yield f"data: {json.dumps(st)}\n\n"
         except Exception as e: yield f"data: {json.dumps({'error': str(e)})}\n\n"
         yield ": keep-alive\n\n"
@@ -260,7 +177,7 @@ def stream_music_download():
 
 @app.route('/download/<path:filename>')
 def download_file(filename):
-    path = os.path.join(OUTPUT_FOLDER, filename)
+    path = os.path.join(app.config['OUTPUT_FOLDER'], filename)
     if not os.path.exists(path): return "檔案不存在", 404
     @after_this_request
     def remove_file(response):
@@ -274,7 +191,6 @@ def report_match():
     data = request.json
     uid = data.get('user_id')
     sid = session['uid']
-    
     idx, msg = int(data.get('item_id')), data.get('message')
     res = TEMP_RESULTS.get(sid)
     
@@ -283,4 +199,5 @@ def report_match():
     success = append_to_sheet(row)
     return jsonify({'success': success})
 
-if __name__ == '__main__': app.run(debug=True, port=5000, threaded=True)
+if __name__ == '__main__': 
+    app.run(debug=True, port=5000, threaded=True)

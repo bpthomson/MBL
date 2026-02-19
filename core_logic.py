@@ -12,8 +12,8 @@ from zipfile import ZipFile, ZIP_DEFLATED
 import cloudscraper
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
+from config import Config
 
-# ... (BahamutCrawler 保持不變) ...
 class BahamutCrawler:
     def __init__(self, user_id):
         self.user_id = user_id
@@ -65,11 +65,8 @@ class BahamutCrawler:
         return [r for r in results if r]
 
 
-# ==========================================
-# 2. MAL 配對器 (升級 Cache 讀取邏輯)
-# ==========================================
 class MalMatcher:
-    def __init__(self, cache_file='mal_id.csv'):
+    def __init__(self, cache_file=Config.CACHE_CSV_FILE):
         self.rq = cloudscraper.create_scraper()
         self.search_api = "https://api.jikan.moe/v4/anime"
         self.allowed_types = ['TV', 'MOVIE', 'OVA', 'TV SPECIAL', 'ONA', 'SPECIAL']
@@ -84,14 +81,12 @@ class MalMatcher:
                     reader = csv.DictReader(f)
                     for row in reader:
                         if row.get('ch_name') and row.get('mal_id'):
-                            # [修改] 嘗試讀取 mal_title，如果舊版 CSV 沒有這個欄位，暫時用中文名代替
                             mal_title = row.get('mal_title')
                             if not mal_title: mal_title = row['ch_name']
-
                             self.cache[row['ch_name'].strip()] = {
                                 'mal_id': int(row['mal_id']),
                                 'img_url': row.get('img_url', ''),
-                                'mal_title': mal_title # 存入記憶體
+                                'mal_title': mal_title
                             }
             except: pass
 
@@ -144,18 +139,16 @@ class MalMatcher:
     def resolve_mal_id(self, row):
         ch_name = row.get('ch_name', '').strip()
 
-        # === 0. 最優先使用 Cache ===
         if ch_name in self.cache:
             c = self.cache[ch_name]
             img = c.get('img_url') or 'https://cdn.myanimelist.net/img/sp/icon/apple-touch-icon-256.png'
             return {
                 'mal_id': c['mal_id'],
-                'title': c['mal_title'], # [修改] 這裡現在會回傳真正的 MAL 標題
+                'title': c['mal_title'],
                 'url': f"https://myanimelist.net/anime/{c['mal_id']}",
                 'img_url': img
             }, "Cache Hit"
 
-        # ... (以下搜尋邏輯保持不變) ...
         target_date = None
         if row.get('year'):
             try: target_date = datetime(row['year'], row.get('month', 1), row.get('day', 1))
@@ -199,7 +192,6 @@ class MalMatcher:
         ))
         
         winner = candidates[0]
-
         has_themes = self.check_animethemes(winner['mal_id'])
         status = ""
 
@@ -214,9 +206,6 @@ class MalMatcher:
         return winner, status
 
 
-# ==========================================
-# 3. XML 生成器
-# ==========================================
 class MalXmlGenerator:
     def generate_xml(self, anime_data_list, user_id):
         root = ET.Element("myanimelist")
@@ -239,9 +228,6 @@ class MalXmlGenerator:
         return minidom.parseString(ET.tostring(root)).toprettyxml(indent="    ")
 
 
-# ==========================================
-# 4. 主題曲下載器
-# ==========================================
 class ThemeDownloader:
     def __init__(self, max_workers=3):
         self.rq = cloudscraper.create_scraper()
@@ -320,7 +306,6 @@ class ThemeDownloader:
         with tempfile.TemporaryDirectory() as temp_dir:
             with ThreadPoolExecutor(max_workers=self.max_workers) as ex:
                 futures = {ex.submit(self.process_anime_task, item, temp_dir): item for item in data_list}
-                
                 done_count = 0
                 total = len(data_list)
                 
