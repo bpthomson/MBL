@@ -21,6 +21,8 @@ TEMP_RESULTS = {}
 FINAL_RESULTS = {}
 MUSIC_QUEUE = {}
 USER_SELECTIONS = {} 
+GAME_QUEUE = {}
+READY_PLAYLISTS = {}
 
 @app.before_request
 def ensure_session_id():
@@ -143,7 +145,36 @@ def dispatch_action():
     elif action == 'music':
         MUSIC_QUEUE[sid] = [{'mal_id': i['mal_id'], 'title': i['baha_title']} for i in final]
         return render_template('music_processing.html', user_id=user_id)
+    elif action == 'guess':
+        GAME_QUEUE[sid] = [{'mal_id': i['mal_id'], 'title': i['baha_title'], 'img_url': i['img_url']} for i in final]
+        return render_template('guess_processing.html', user_id=user_id)
+        
     return redirect(url_for('index'))
+
+@app.route('/stream_guess_playlist')
+def stream_guess_playlist():
+    sid = session['uid']
+    q = GAME_QUEUE.get(sid)
+    if not q: return Response("data: "+json.dumps({'error':'過期'})+"\n\n", mimetype='text/event-stream')
+    
+    def generate():
+        dl = ThemeDownloader(max_workers=3) 
+        try:
+            for st in dl.build_playlist_generator(q):
+                if st.get('done'):
+                    READY_PLAYLISTS[sid] = st.get('playlist', [])
+                yield f"data: {json.dumps(st)}\n\n"
+        except Exception as e: 
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        yield ": keep-alive\n\n"
+    return Response(generate(), mimetype='text/event-stream')
+
+@app.route('/play_game')
+def play_game():
+    sid = session['uid']
+    playlist = READY_PLAYLISTS.get(sid, [])
+    if not playlist: return redirect(url_for('index'))
+    return render_template('guess_game.html', playlist=json.dumps(playlist))
 
 @app.route('/result_xml/<user_id>')
 def show_xml_result(user_id):
@@ -198,6 +229,21 @@ def report_match():
     row = [datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), res[idx]['baha_title'], str(res[idx]['mal_id']), msg]
     success = append_to_sheet(row)
     return jsonify({'success': success})
+
+@app.route('/api/audio-proxy')
+def audio_proxy():
+    import requests
+    url = request.args.get('url')
+    if not url: return "URL parameter is missing", 400
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        res = requests.get(url, stream=True, timeout=15, headers=headers)
+        res.raise_for_status()
+        return Response(res.iter_content(chunk_size=8192), content_type=res.headers.get('Content-Type'))
+    except requests.exceptions.RequestException as e:
+        return str(e), 502
+    
+
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000, threaded=True)

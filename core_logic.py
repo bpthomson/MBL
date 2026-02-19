@@ -13,6 +13,7 @@ import cloudscraper
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 from config import Config
+import random
 
 class BahamutCrawler:
     def __init__(self, user_id):
@@ -247,7 +248,7 @@ class ThemeDownloader:
                 "filter[has]": "resources",
                 "filter[site]": "MyAnimeList",
                 "filter[external_id]": mal_id,
-                "include": "animethemes,animethemes.song,animethemes.animethemeentries.videos.audio"
+                "include": "animethemes.song,animethemes.animethemeentries.videos.audio"
             }
             resp = self.rq.get(self.search_url, params=params, timeout=10)
             
@@ -262,20 +263,45 @@ class ThemeDownloader:
             
             for t in data[0].get('animethemes', []):
                 try:
-                    slug = t.get('slug')
-                    title = t.get('song', {}).get('title')
-                    entry = t.get('animethemeentries', [])[0]
-                    video = entry.get('videos', [])[0]
-                    audio = video.get('audio', {})
-                    link = audio.get('link')
-                    mime = audio.get('mimetype', '')
-                    ext = 'mp3' if 'mp3' in mime else 'webm' if 'webm' in mime else 'ogg'
+                    slug = t.get('slug', 'Unknown')
+                    
+                    # 安全獲取歌曲名稱
+                    song_data = t.get('song')
+                    title = song_data.get('title', 'Unknown Title') if song_data else 'Unknown Title'
+                    
+                    entries = t.get('animethemeentries', [])
+                    if not entries: continue
+                    
+                    videos = entries[0].get('videos', [])
+                    if not videos: continue
+                    
+                    video = videos[0]
+                    link = ""
+                    ext = "webm"
+                    
+                    # 1. 先嘗試獲取獨立的 audio 連結
+                    audio = video.get('audio')
+                    if audio and isinstance(audio, dict) and audio.get('link'):
+                        link = audio.get('link')
+                        mime = audio.get('mimetype', '')
+                        ext = 'mp3' if 'mp3' in mime else 'ogg' if 'ogg' in mime else 'webm'
+                    else:
+                        # 2. 若官方沒有獨立音源，直接拿影片的 link 自行轉換成 audio 連結
+                        v_link = video.get('link', '')
+                        if v_link:
+                            link = v_link.replace('//v.animethemes.moe/', '//a.animethemes.moe/').replace('.webm', '.ogg')
+                            ext = 'ogg'
+                    
                     if link:
                         themes.append({'type': slug, 'title': title, 'link': link, 'ext': ext})
-                except: continue
+                except Exception as inner_e:
+                    # 避免單一歌曲的解析錯誤中斷整部動畫
+                    continue
+                    
             return themes
-        except: return []
-
+        except Exception as e: 
+            return []
+        
     def _download_file(self, url, path):
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -338,3 +364,39 @@ class ThemeDownloader:
                         z.write(file_path, os.path.relpath(file_path, temp_dir))
             
         yield {'msg': "完成", 'progress': '100%', 'done': True, 'filename': os.path.basename(output_path)}
+
+    def build_playlist_generator(self, data_list):
+        yield {'msg': f"正在準備 {len(data_list)} 部動畫的猜歌清單...", 'progress': '0%'}
+        
+        playlist = []
+        total = len(data_list)
+        done_count = 0
+        
+        with ThreadPoolExecutor(max_workers=self.max_workers) as ex:
+            futures = {ex.submit(self.get_theme_links, item['mal_id']): item for item in data_list}
+            for f in as_completed(futures):
+                item = futures[f]
+                done_count += 1
+                try:
+                    songs = f.result()
+                    if songs:
+                        for s in songs:
+                            audio_link = s.get('link', '')
+                            video_link = audio_link.replace('//a.animethemes.moe/', '//v.animethemes.moe/').replace('.ogg', '.webm') if audio_link else ''
+                            
+                            playlist.append({
+                                "anime_ch_name": item['title'],
+                                "anime_img_url": item.get('img_url', ''),
+                                "theme_type": s['type'],
+                                "theme_title": s['title'],
+                                "theme_link": audio_link,
+                                "video_link": video_link
+                            })
+                    
+                    progress_val = int((done_count / total) * 95)
+                    yield {'msg': f"[{done_count}/{total}] 解析音源: {item['title']}", 'progress': f"{progress_val}%"}
+                except Exception as e:
+                    pass
+                    
+        random.shuffle(playlist)
+        yield {'msg': "清單建立完成！準備進入遊戲...", 'progress': '100%', 'done': True, 'playlist': playlist}
