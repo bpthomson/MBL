@@ -1,26 +1,43 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>MyBahaList</title>
+    <title>MBL System</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <style>
-        .login-card { padding: 40px; width: 100%; max-width: 400px; text-align: center; }
-        h1 { margin-bottom: 5px; font-weight: 600; color: #fff; }
-        p { color: #aaa; margin-bottom: 30px; font-size: 14px; }
-        .error { color: #ff453a; font-size: 14px; margin-bottom: 15px; }
-        .btn-full { width: 100%; }
-    </style>
 </head>
 <body class="flex-center">
-    <div class="card login-card">
-        <h1>MyBahaList</h1>
-        <p>巴哈姆特收藏匯入工具</p>
-        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <div class="navbar">
+        <a href="/" class="navbar-brand">
+            <span style="color: #005bb5; font-weight: bold; margin-right: 5px;">/></span>MBL System
+        </a>
+        
+        <div class="navbar-links" style="display: flex; align-items: center; gap: 15px;">
+            <span style="display: flex; align-items: center; gap: 5px; color: #3fb950; font-family: monospace; font-size: 11px;">
+                <span style="width: 6px; height: 6px; background-color: #3fb950; border-radius: 50%; display: inline-block; box-shadow: 0 0 5px #3fb950;"></span>
+                SYS.ONLINE
+            </span>
+
+            {% if user_id %}
+            <span style="color: #8b949e; font-family: monospace; font-size: 11px; border-left: 1px solid #30363d; padding-left: 15px;">
+                TARGET : <span style="color: #c9d1d9;">{{ user_id }}</span>
+            </span>
+            {% endif %}
+
+            <span style="border-left: 1px solid #30363d; padding-left: 15px;">
+                <a href="https://docs.google.com/spreadsheets/d/14lacBmNveOxbD461wObB9x0KW86dFY4GgsTbte8iOo8/edit" target="_blank">[ Error Logs ]</a>
+            </span>
+        </div>
+    </div>
+    <div class="wrapper">
+        <div class="header-section col">
+            <h1>MBL System</h1>
+            <p class="sub-text">Database Extraction Module</p>
+        </div>
+        {% if error %}<div class="log-line text-error" style="margin-bottom:15px; border:none;">ERR: {{ error }}</div>{% endif %}
         <form method="POST">
-            <input type="text" name="user_id" placeholder="巴哈姆特 ID" required>
-            <input type="number" name="limit" placeholder="限制數量 (選填)">
-            <button type="submit" class="btn btn-primary btn-full">開始轉換</button>
+            <input type="text" name="user_id" placeholder="Account ID" required>
+            <input type="number" name="limit" placeholder="Data Limit (Optional)">
+            <button type="submit" class="btn btn-primary btn-block mt-4">Initialize Sequence</button>
         </form>
     </div>
 </body>

@@ -80,7 +80,7 @@ def update_local_cache(target_tab_name):
             sheet.resize(rows=1)
             sheet.resize(rows=1000)
             headers = ['Time', 'CH Title', 'MAL ID', 'MAL Title', 'Img URL', 'Preview', 'Status', 'Check(X)']
-            sheet.update('A1:H1', [headers])
+            sheet.update(range_name='A1:H1', values=[headers])
             print(f"分頁 {target_tab_name} 已清空。\n")
             
     else:

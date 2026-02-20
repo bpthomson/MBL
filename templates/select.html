@@ -1,120 +1,126 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="en">
 <head>
-    <meta charset="UTF-8"><title>選擇項目</title>
+    <meta charset="UTF-8"><title>Target Selection</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        body { padding: 20px; }
-        .controls { position: sticky; top: 0; z-index: 90; background: rgba(30,30,30,0.95); padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        h2 { margin: 0; font-size: 18px; font-weight: 600; color: #fff; }
-        .sub-text { font-size: 13px; color: #aaa; }
-        .btn-group { display: flex; gap: 8px; }
-        
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
-        .card-wrapper { position: relative; }
-        .sel-card { display: block; border-radius: 8px; overflow: hidden; border: 2px solid transparent; cursor: pointer; transition: transform 0.2s, border-color 0.2s; height: 100%; position: relative; }
-        .sel-card:hover { transform: translateY(-3px); }
-        .sel-card img { width: 100%; height: 240px; object-fit: cover; display: block; opacity: 0.8; transition: opacity 0.2s; }
-        .sel-card:hover img { opacity: 1; }
-        .card-body { padding: 12px; font-size: 13px; line-height: 1.4; padding-bottom: 45px; }
-        .title-main { font-weight: 600; color: #fff; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 4px;}
-        .title-sub { color: #888; font-size: 12px; }
-
-        .sel-card.selected { border-color: #0071e3; background: #262626; box-shadow: 0 0 15px rgba(0, 113, 227, 0.2); }
-        .sel-card.warning { border-color: #ff453a !important; }
-        .low-conf-badge { position: absolute; top: 0; left: 0; right: 0; background: rgba(255, 69, 58, 0.9); color: white; padding: 4px 8px; font-size: 11px; font-weight: bold; z-index: 20; display: none; text-align: center; }
+        .controls { position: sticky; top: 0; z-index: 90; background: rgba(22, 27, 34, 0.95); padding: 15px 20px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border: 1px solid #30363d; backdrop-filter: blur(10px); }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 16px; }
+        .sel-card { display: block; border-radius: 6px; overflow: hidden; border: 1px solid #30363d; background: #0d1117; cursor: pointer; transition: 0.2s; height: 100%; position: relative; filter: grayscale(40%); opacity: 0.7;}
+        .sel-card:hover { filter: grayscale(0%); opacity: 1; border-color: #555; }
+        .sel-card img { width: 100%; height: 220px; object-fit: cover; display: block; }
+        .card-body { padding: 12px; font-size: 12px; line-height: 1.4; padding-bottom: 45px; border-top: 1px solid #30363d; }
+        .title-main { font-weight: 500; color: #c9d1d9; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 4px;}
+        .title-sub { color: #6e7681; font-size: 11px; font-family: monospace; }
+        .sel-card.selected { border-color: #005bb5; background: #111b26; filter: grayscale(0%); opacity: 1; }
+        .sel-card.warning { border-color: #611e1e !important; }
+        .low-conf-badge { position: absolute; top: 0; left: 0; width: 100%; background: rgba(218, 54, 51, 0.9); color: white; padding: 4px 0; font-size: 10px; font-weight: bold; z-index: 20; display: none; text-align: center; font-family: monospace; box-sizing: border-box;}
         .sel-card.warning .low-conf-badge { display: block; }
-        .check-icon { position: absolute; top: 25px; right: 8px; width: 24px; height: 24px; background: #0071e3; border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; z-index: 20; transform: scale(0); transition: 0.2s; }
-        .sel-card.selected .check-icon { transform: scale(1); }
-        .sel-card.selected img { opacity: 1; }
+        .check-dot { position: absolute; top: 12px; right: 12px; width: 10px; height: 10px; background: #0071e3; border-radius: 50%; z-index: 20; transform: scale(0); transition: 0.2s; box-shadow: 0 0 8px #0071e3; }
+        .sel-card.selected .check-dot { transform: scale(1); }
 
-        .report-btn { position: absolute; bottom: 8px; right: 8px; background: #333; color: #aaa; padding: 4px 10px; font-size: 11px; border-radius: 4px; z-index: 30; border: 1px solid #444; cursor: pointer; }
-        .report-btn:hover { background: #dc3545; color: white; border-color: #dc3545; }
-        .report-btn.reported { background: #6c757d; color: #ccc; cursor: default; pointer-events: none; opacity: 0.6; }
-
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 100; justify-content: center; align-items: center; }
-        .modal-box { padding: 25px; width: 300px; text-align: center; }
-        .footer-links { margin-top: 40px; text-align: center; border-top: 1px solid #333; padding-top: 20px; }
-        .footer-links a { color: #888; text-decoration: none; font-size: 13px; transition: 0.2s; }
-        .footer-links a:hover { color: #fff; text-decoration: underline; }
+        /* Report 按鈕維持警戒紅色風格 */
+        .report-btn { position: absolute; bottom: 8px; right: 8px; background: transparent; color: #ff7b72; padding: 4px 8px; font-size: 10px; z-index: 30; border: 1px solid #ff7b72; border-radius: 4px; cursor: pointer; text-decoration: none; font-family: monospace;}
+        .report-btn:hover { background: #da3633; color: #fff; border-color: #da3633; }
+        .report-btn.reported { border-color: #484f58; color: #484f58; cursor: default; background: transparent; pointer-events: none;}
     </style>
 </head>
 <body>
-<form action="/dispatch_action" method="POST">
-<input type="hidden" name="user_id" value="{{user_id}}">
-<div class="controls card">
-    <div>
-        <h2>選擇項目</h2><div class="sub-text">請勾選正確項目</div>
-    </div>
-    <div class="btn-group">
-        <button type="button" class="btn btn-outline" onclick="toggle(true)">全選</button>
-        <button type="button" class="btn btn-outline" onclick="toggle(false)">取消</button>
-        <button type="submit" name="action" value="xml" class="btn btn-primary">生成 XML</button>
-        <button type="submit" name="action" value="music" class="btn btn-secondary">下載音樂</button>
-        <button type="submit" name="action" value="guess" class="btn btn-success" style="background-color: #ff9f0a; color: white; border: none;">開始猜歌</button>
-    </div>
-</div>
+    <div class="navbar">
+        <a href="/" class="navbar-brand">
+            <span style="color: #005bb5; font-weight: bold; margin-right: 5px;">/></span>MBL System
+        </a>
+        
+        <div class="navbar-links" style="display: flex; align-items: center; gap: 15px;">
+            <span style="display: flex; align-items: center; gap: 5px; color: #3fb950; font-family: monospace; font-size: 11px;">
+                <span style="width: 6px; height: 6px; background-color: #3fb950; border-radius: 50%; display: inline-block; box-shadow: 0 0 5px #3fb950;"></span>
+                SYS.ONLINE
+            </span>
 
-<div class="grid">
-{% for item in results %}
-    {% set is_checked = false %}
-    {% if saved_sel is not none %}
-        {% if item.id|string in saved_sel %}{% set is_checked = true %}{% endif %}
-    {% else %}
-        {% if item.mal_id and not item.is_low %}{% set is_checked = true %}{% endif %}
-    {% endif %}
+            {% if user_id %}
+            <span style="color: #8b949e; font-family: monospace; font-size: 11px; border-left: 1px solid #30363d; padding-left: 15px;">
+                TARGET : <span style="color: #c9d1d9;">{{ user_id }}</span>
+            </span>
+            {% endif %}
 
-<div class="card-wrapper">
-    <label class="card sel-card {% if is_checked %}selected{% endif %} {% if item.is_low %}warning{% endif %}">
-        <input type="checkbox" name="selected_items" value="{{item.id}}" style="display:none" 
-               {% if is_checked %}checked{% endif %} 
-               onchange="this.closest('.sel-card').classList.toggle('selected', this.checked)">
-        <div class="low-conf-badge">⚠️ {{ item.status }}</div><div class="check-icon">✓</div>
-        <img src="{{item.img_url}}" loading="lazy">
-        <div class="card-body">
-            <div class="title-main">{{item.baha_title}}</div><div class="title-sub">{{item.mal_title}}</div>
+            <span style="border-left: 1px solid #30363d; padding-left: 15px;">
+                <a href="https://docs.google.com/spreadsheets/d/14lacBmNveOxbD461wObB9x0KW86dFY4GgsTbte8iOo8/edit" target="_blank">[ Error Logs ]</a>
+            </span>
         </div>
-    </label>
-    <button type="button" class="report-btn" id="btn-{{item.id}}" onclick="openRep('{{item.id}}')">回報錯誤</button>
-</div>
-{% endfor %}
-</div>
-
-<div class="footer-links">
-    <a href="https://docs.google.com/spreadsheets/d/14lacBmNveOxbD461wObB9x0KW86dFY4GgsTbte8iOo8/edit?gid=0#gid=0" target="_blank">查看公開回報紀錄</a>
-</div>
-</form>
-
-<div class="modal" id="repModal"><div class="modal-box card">
-    <h3 style="color:#fff;margin-top:0">回報錯誤</h3>
-    <input type="text" id="mMsg" placeholder="正確 ID 或備註">
-    <div class="btn-group" style="justify-content: center;">
-        <button id="submitBtn" onclick="subRep()" class="btn btn-primary">送出</button>
-        <button onclick="document.getElementById('repModal').style.display='none'" class="btn btn-outline">取消</button>
     </div>
-</div></div>
+    <form action="/dispatch_action" method="POST">
+    <input type="hidden" name="user_id" value="{{user_id}}">
+    <div class="wrapper-large">
+        <div class="controls">
+            <div>
+                <h1 style="font-size: 1.2em; margin:0;">Target Selection</h1>
+                <p class="sub-text" style="margin-top:4px;">Verify and select records.</p>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn btn-outline" onclick="toggle(true)">Select All</button>
+                <button type="button" class="btn btn-outline" onclick="toggle(false)">Clear</button>
+                <button type="submit" name="action" value="xml" class="btn btn-secondary">Export XML</button>
+                <button type="submit" name="action" value="music" class="btn btn-secondary">Download Audio</button>
+                <button type="submit" name="action" value="guess" class="btn btn-primary">Audio Quiz</button>
+            </div>
+        </div>
 
-<script>
-let curId=null; const uid="{{user_id}}";
-function toggle(v){document.querySelectorAll('input[name="selected_items"]').forEach(c=>{c.checked=v;c.dispatchEvent(new Event('change'))})}
-function openRep(id){if(document.getElementById('btn-'+id).classList.contains('reported'))return;curId=id;document.getElementById('mMsg').value='';document.getElementById('repModal').style.display='flex'}
+    <div class="grid">
+    {% for item in results %}
+        {% set is_checked = false %}
+        {% if saved_sel is not none %}
+            {% if item.id|string in saved_sel %}{% set is_checked = true %}{% endif %}
+        {% else %}
+            {% if item.mal_id and not item.is_low %}{% set is_checked = true %}{% endif %}
+        {% endif %}
 
-function subRep(){
-    const msg = document.getElementById('mMsg').value; if(!msg) return;
-    const btn = document.getElementById('submitBtn'); const orig = btn.innerText;
-    btn.innerText = "傳送中..."; btn.disabled = true;
+    <div style="position: relative;">
+        <label class="sel-card {% if is_checked %}selected{% endif %} {% if item.is_low %}warning{% endif %}">
+            <input type="checkbox" name="selected_items" value="{{item.id}}" style="display:none" 
+                {% if is_checked %}checked{% endif %} 
+                onchange="this.closest('.sel-card').classList.toggle('selected', this.checked)">
+            <div class="low-conf-badge">WARN: Low Accuracy</div>
+            <div class="check-dot"></div>
+            <img src="{{item.img_url}}" loading="lazy">
+            <div class="card-body">
+                <div class="title-main">{{item.baha_title}}</div><div class="title-sub">{{item.mal_title}}</div>
+            </div>
+        </label>
+        <button type="button" class="report-btn" id="btn-{{item.id}}" onclick="openRep('{{item.id}}')">Report Issue</button>
+    </div>
+    {% endfor %}
+    </div>
+    </div>
+    </form>
 
-    fetch('/report_match',{
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({user_id:uid, item_id:curId, message:msg})
-    }).then(r => r.json()).then(d => {
-        if(d.success){
-            const b = document.getElementById('btn-'+curId);
-            b.innerText = "已回報"; b.classList.add('reported');
-            document.getElementById('repModal').style.display = 'none';
-        } else alert("回報失敗，請稍後再試");
-    }).catch(() => alert("連線錯誤")).finally(() => { btn.innerText = orig; btn.disabled = false; });
-}
-</script>
+    <div id="repModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:200; align-items:center; justify-content:center;">
+        <div class="wrapper" style="margin:0; width:300px; padding:25px;">
+            <h1 style="margin-bottom: 15px; font-size: 1.1em;">Report Issue</h1>
+            <input type="text" id="mMsg" placeholder="Input correct ID or note">
+            <div style="display:flex; gap:10px;">
+                <button id="submitBtn" onclick="subRep()" class="btn btn-danger" style="flex:1;">Submit</button>
+                <button onclick="document.getElementById('repModal').style.display='none'" class="btn btn-outline" style="flex:1;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    let curId=null; const uid="{{user_id}}";
+    function toggle(v){document.querySelectorAll('input[name="selected_items"]').forEach(c=>{c.checked=v;c.dispatchEvent(new Event('change'))})}
+    function openRep(id){if(document.getElementById('btn-'+id).classList.contains('reported'))return;curId=id;document.getElementById('mMsg').value='';document.getElementById('repModal').style.display='flex'}
+    function subRep(){
+        const msg = document.getElementById('mMsg').value; if(!msg) return;
+        const btn = document.getElementById('submitBtn'); const orig = btn.innerText;
+        btn.innerText = "Wait..."; btn.disabled = true;
+        fetch('/report_match',{ method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({user_id:uid, item_id:curId, message:msg})
+        }).then(r => r.json()).then(d => {
+            if(d.success){
+                const b = document.getElementById('btn-'+curId);
+                b.innerText = "Logged"; b.classList.add('reported');
+                document.getElementById('repModal').style.display = 'none';
+            } else alert("Failed to log issue.");
+        }).catch(() => alert("Connection Error.")).finally(() => { btn.innerText = orig; btn.disabled = false; });
+    }
+    </script>
 </body>
 </html>

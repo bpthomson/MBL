@@ -55,7 +55,6 @@ class ThemeCacheManager:
     def get_themes(self, mal_id, retry=0):
         mal_id_str = str(mal_id)
         
-        # 若快取已有，直接秒回
         if mal_id_str in self.cache:
             return self.cache[mal_id_str]
 
@@ -105,7 +104,6 @@ class ThemeCacheManager:
                         except Exception:
                             continue
 
-            # 將結果存入快取並寫入檔案
             self.cache[mal_id_str] = themes
             self.save_cache()
             return themes
@@ -271,7 +269,6 @@ class MalMatcher:
         
         winner = candidates[0]
         
-        # 此處呼叫共用快取管理器，取代原先的 check_animethemes
         themes = self.theme_mgr.get_themes(winner['mal_id'])
         has_themes = len(themes) > 0
         status = ""
@@ -318,13 +315,11 @@ class ThemeDownloader:
         return re.sub(r'[\\/*?:"<>|]', "", str(name)).strip()
 
     def get_theme_links(self, mal_id):
-        # 此處亦呼叫共用管理器，直接從快取讀取
         return self.theme_mgr.get_themes(mal_id)
 
     def _download_file(self, url, path):
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            # 由於下載檔案仍需獨立請求，因此維持建立連線
             with cloudscraper.create_scraper().get(url, stream=True, timeout=20) as r:
                 if r.status_code == 200:
                     with open(path, 'wb') as f: shutil.copyfileobj(r.raw, f, length=1024*1024)
@@ -339,7 +334,6 @@ class ThemeDownloader:
         s_title = self.sanitize_filename(item['title'])
         count = 0
         for s in songs:
-            # 直接由 link 切割出最後的副檔名
             ext = s['link'].split('.')[-1] if s.get('link') else 'ogg'
             fname = f"{s['type']} - {self.sanitize_filename(s['title'])}.{ext}"
             full_path = os.path.join(temp_dir, s_title, fname)
@@ -349,7 +343,7 @@ class ThemeDownloader:
         return {'title': s_title, 'count': count}
 
     def download_and_zip_generator(self, data_list, output_path):
-        yield {'msg': f"準備處理 {len(data_list)} 部動畫...", 'progress': '0%'}
+        yield {'msg': f"Preparing {len(data_list)} modules...", 'progress': '0%'}
         
         with tempfile.TemporaryDirectory() as temp_dir:
             with ThreadPoolExecutor(max_workers=self.max_workers) as ex:
@@ -366,18 +360,18 @@ class ThemeDownloader:
                         
                         if result and result['count'] > 0:
                             yield {
-                                'msg': f"[{done_count}/{total}] 下載: {result['title']} ({result['count']}首)", 
+                                'msg': f"[{done_count}/{total}] Downloaded: {result['title']} ({result['count']} tracks)", 
                                 'progress': f"{progress_val}%"
                             }
                         else:
                             yield {
-                                'msg': f"[{done_count}/{total}] 跳過: {item_info['title']} (無音源)", 
+                                'msg': f"[{done_count}/{total}] Skipped: {item_info['title']} (No Audio)", 
                                 'progress': f"{progress_val}%"
                             }
                     except Exception as e:
-                        yield {'msg': f"錯誤: {str(e)}", 'progress': f"{int((done_count/total)*90)}%"}
+                        yield {'msg': f"ERR: {str(e)}", 'progress': f"{int((done_count/total)*90)}%"}
 
-            yield {'msg': "打包壓縮中...", 'progress': '95%'}
+            yield {'msg': "Compressing archive...", 'progress': '95%'}
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             with ZipFile(output_path, 'w', compression=ZIP_DEFLATED) as z:
                 for root, dirs, files in os.walk(temp_dir):
@@ -385,10 +379,10 @@ class ThemeDownloader:
                         file_path = os.path.join(root, file)
                         z.write(file_path, os.path.relpath(file_path, temp_dir))
             
-        yield {'msg': "完成", 'progress': '100%', 'done': True, 'filename': os.path.basename(output_path)}
+        yield {'msg': "Completed.", 'progress': '100%', 'done': True, 'filename': os.path.basename(output_path)}
 
     def build_playlist_generator(self, data_list):
-        yield {'msg': f"正在準備 {len(data_list)} 部動畫的猜歌清單...", 'progress': '0%'}
+        yield {'msg': f"Compiling audio database for {len(data_list)} modules...", 'progress': '0%'}
         
         playlist = []
         total = len(data_list)
@@ -417,10 +411,10 @@ class ThemeDownloader:
                             })
                     
                     progress_val = int((done_count / total) * 95)
-                    yield {'msg': f"[{done_count}/{total}] 解析音源: {item['title']}", 'progress': f"{progress_val}%"}
+                    yield {'msg': f"[{done_count}/{total}] Extracting: {item['title']}", 'progress': f"{progress_val}%"}
                 except Exception as e:
                     pass
                     
         import random
         random.shuffle(playlist)
-        yield {'msg': "清單建立完成！準備進入遊戲...", 'progress': '100%', 'done': True, 'playlist': playlist}
+        yield {'msg': "Database compiled. Launching module...", 'progress': '100%', 'done': True, 'playlist': playlist}

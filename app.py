@@ -35,7 +35,7 @@ def index():
     if request.method == 'POST':
         user_id = request.form.get('user_id', '').strip()
         limit = request.form.get('limit')
-        if not user_id: return render_template('index.html', error="請輸入 ID")
+        if not user_id: return render_template('index.html', error="Target ID is required.")
         return render_template('processing.html', user_id=user_id, limit=limit)
     return render_template('index.html')
 
@@ -54,15 +54,15 @@ def stream_progress():
         crawler = BahamutCrawler(user_id)
         try: collections = crawler.get_collections()
         except Exception as e: yield f"data: {json.dumps({'error': str(e)})}\n\n"; return
-        if not collections: yield f"data: {json.dumps({'error': '找不到任何收藏'})}\n\n"; return
+        if not collections: yield f"data: {json.dumps({'error': 'No valid collection records detected.'})}\n\n"; return
             
         target_list = collections[:int(limit)] if limit and limit.isdigit() else collections
-        yield f"data: {json.dumps({'msg': f'發現 {len(collections)} 筆，讀取 {len(target_list)} 筆...'})}\n\n"
+        yield f"data: {json.dumps({'msg': f'Detected {len(collections)} records. Initializing stream for {len(target_list)} items...'})}\n\n"
         
         try: details = crawler.fetch_all_details(target_list)
-        except: yield f"data: {json.dumps({'error': '資料讀取失敗'})}\n\n"; return
+        except: yield f"data: {json.dumps({'error': 'Data stream extraction failed.'})}\n\n"; return
 
-        yield f"data: {json.dumps({'msg': '開始配對...'})}\n\n"
+        yield f"data: {json.dumps({'msg': 'Initiating feature matching protocol...'})}\n\n"
         matcher = MalMatcher()
         results = []
         new_candidates = []
@@ -77,6 +77,7 @@ def stream_progress():
                 
                 img = mal_data.get('img_url', '') if mal_data else 'https://cdn.myanimelist.net/img/sp/icon/apple-touch-icon-256.png'
                 
+                # 確保年份被記錄
                 row = {
                     'id': i,
                     'baha_title': item['ch_name'],
@@ -147,6 +148,7 @@ def dispatch_action():
         MUSIC_QUEUE[sid] = [{'mal_id': i['mal_id'], 'title': i['baha_title']} for i in final]
         return render_template('music_processing.html', user_id=user_id)
     elif action == 'guess':
+        # 確保年份從 TEMP_RESULTS 傳遞到遊戲佇列
         GAME_QUEUE[sid] = [{'mal_id': i['mal_id'], 'title': i['baha_title'], 'img_url': i['img_url'], 'year': i.get('year')} for i in final]
         return render_template('guess_processing.html', user_id=user_id)
         
@@ -156,7 +158,7 @@ def dispatch_action():
 def stream_guess_playlist():
     sid = session['uid']
     q = GAME_QUEUE.get(sid)
-    if not q: return Response("data: "+json.dumps({'error':'過期'})+"\n\n", mimetype='text/event-stream')
+    if not q: return Response("data: "+json.dumps({'error': 'Session expired or invalid queue.'})+"\n\n", mimetype='text/event-stream')
     
     def generate():
         dl = ThemeDownloader(max_workers=3) 
@@ -173,9 +175,10 @@ def stream_guess_playlist():
 @app.route('/play_game')
 def play_game():
     sid = session['uid']
+    user_id = request.args.get('user_id', '') # 接收前端跳轉時夾帶的 user_id
     playlist = READY_PLAYLISTS.get(sid, [])
     if not playlist: return redirect(url_for('index'))
-    return render_template('guess_game.html', playlist=json.dumps(playlist))
+    return render_template('guess_game.html', playlist=json.dumps(playlist), user_id=user_id)
 
 @app.route('/result_xml/<user_id>')
 def show_xml_result(user_id):
@@ -187,7 +190,7 @@ def show_xml_result(user_id):
 def download_xml_mem(user_id):
     sid = session['uid']
     content = FINAL_RESULTS.get(sid)
-    if not content: return "無效請求", 404
+    if not content: return "Invalid Request", 404
     mem = io.BytesIO(); mem.write(content.encode('utf-8')); mem.seek(0)
     return send_file(mem, as_attachment=True, download_name=f"{user_id}_mal_import.xml", mimetype='application/xml')
 
@@ -196,7 +199,7 @@ def stream_music_download():
     user_id = request.args.get('user_id')
     sid = session['uid']
     q = MUSIC_QUEUE.get(sid)
-    if not q: return Response("data: "+json.dumps({'error':'過期'})+"\n\n", mimetype='text/event-stream')
+    if not q: return Response("data: "+json.dumps({'error': 'Session expired or invalid queue.'})+"\n\n", mimetype='text/event-stream')
     
     def generate():
         dl = ThemeDownloader(max_workers=3) 
@@ -210,7 +213,7 @@ def stream_music_download():
 @app.route('/download/<path:filename>')
 def download_file(filename):
     path = os.path.join(app.config['OUTPUT_FOLDER'], filename)
-    if not os.path.exists(path): return "檔案不存在", 404
+    if not os.path.exists(path): return "File not found.", 404
     @after_this_request
     def remove_file(response):
         try: os.remove(path)
@@ -244,7 +247,5 @@ def audio_proxy():
     except requests.exceptions.RequestException as e:
         return str(e), 502
     
-
-
 if __name__ == '__main__': 
     app.run(debug=True, port=5001, threaded=True)

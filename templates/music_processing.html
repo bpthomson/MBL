@@ -1,29 +1,53 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="en">
 <head>
-    <meta charset="UTF-8"><title>下載中</title>
+    <meta charset="UTF-8"><title>Audio Processing</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <style>
-        .container { width: 90%; max-width: 600px; }
-        h2 { font-weight: 500; margin-bottom: 20px; text-align: center; color: #fff; }
-        .progress-bg { width: 100%; height: 4px; background: #333; border-radius: 2px; overflow: hidden; margin-bottom: 20px; }
-        .progress-fill { height: 100%; width: 0%; background: #0071e3; transition: width 0.3s; }
-        .log-window { height: 250px; background: #000; border: 1px solid #333; padding: 15px; overflow-y: auto; font-size: 12px; line-height: 1.6; color: #aaa; border-radius: 6px; margin-bottom: 20px; }
-        .log-line { border-bottom: 1px solid #1a1a1a; padding: 2px 0; }
-        .btn-area { text-align: center; display: flex; justify-content: center; gap: 15px; }
-        .btn-area a { display: none; }
-    </style>
 </head>
 <body class="flex-center">
-<div class="container">
-    <h2 id="status">下載中...</h2>
-    <div class="progress-bg"><div class="progress-fill" id="fill"></div></div>
-    <div class="log-window" id="log"></div>
-    <div class="btn-area">
-        <a href="#" id="dlBtn" class="btn btn-primary">下載檔案</a>
-        <a href="/select/{{user_id}}" id="backBtn" class="btn btn-secondary">返回清單</a>
+    <div class="navbar">
+        <a href="/" class="navbar-brand">
+            <span style="color: #005bb5; font-weight: bold; margin-right: 5px;">/></span>MBL System
+        </a>
+        
+        <div class="navbar-links" style="display: flex; align-items: center; gap: 15px;">
+            <span style="display: flex; align-items: center; gap: 5px; color: #3fb950; font-family: monospace; font-size: 11px;">
+                <span style="width: 6px; height: 6px; background-color: #3fb950; border-radius: 50%; display: inline-block; box-shadow: 0 0 5px #3fb950;"></span>
+                SYS.ONLINE
+            </span>
+
+            {% if user_id %}
+            <span style="color: #8b949e; font-family: monospace; font-size: 11px; border-left: 1px solid #30363d; padding-left: 15px;">
+                TARGET : <span style="color: #c9d1d9;">{{ user_id }}</span>
+            </span>
+            {% endif %}
+
+            <span style="border-left: 1px solid #30363d; padding-left: 15px;">
+                <a href="https://docs.google.com/spreadsheets/d/14lacBmNveOxbD461wObB9x0KW86dFY4GgsTbte8iOo8/edit" target="_blank">[ Error Logs ]</a>
+            </span>
+        </div>
     </div>
-</div>
+    <div class="navbar">
+        <a href="/" class="navbar-brand">MBL System</a>
+        <div class="navbar-links">
+            <a href="/">[ Terminate Session ]</a>
+        </div>
+    </div>
+
+    <div class="wrapper">
+        <div class="header-section col">
+            <h1 id="status">Compiling Audio Archive...</h1>
+            <p class="sub-text">Please wait. Processing data stream.</p>
+        </div>
+        <div class="progress-bg"><div class="progress-fill" id="fill"></div></div>
+        <div class="log-window" id="log"></div>
+
+        <div class="main-actions" id="action-area" style="display: none; margin-top: 20px;">
+            <a href="#" id="dlBtn" class="btn btn-primary" style="flex: 1; text-decoration: none;">Download Archive</a>
+            <a href="/select/{{user_id}}" class="btn btn-secondary" style="flex: 1; text-decoration: none;">Return</a>
+        </div>
+    </div>
+
 <script>
 const es = new EventSource("/stream_music_download?user_id={{user_id}}");
 const log = document.getElementById('log');
@@ -31,20 +55,28 @@ const status = document.getElementById('status');
 
 function addLog(txt) {
     const d = document.createElement('div');
-    d.className = 'log-line'; d.innerText = txt;
+    d.className = 'log-line'; d.innerText = `> ${txt}`;
     log.appendChild(d); log.scrollTop = log.scrollHeight;
 }
 
 es.onmessage = e => {
     const d = JSON.parse(e.data);
-    if(d.error) { status.innerText="錯誤"; addLog("Error: "+d.error); document.getElementById('backBtn').style.display='inline-block'; es.close(); return; }
-    if(d.msg) { document.getElementById('status').innerText = d.msg; addLog(d.msg); }
+    if(d.error) { 
+        status.innerText = "System Error"; 
+        addLog("SYS_ERR: " + d.error); 
+        document.getElementById('action-area').style.display = 'flex';
+        document.getElementById('dlBtn').style.display = 'none';
+        es.close(); return; 
+    }
+    if(d.msg) { status.innerText = d.msg; addLog(d.msg); }
     if(d.progress) document.getElementById('fill').style.width = d.progress;
+    
     if(d.done) {
-        status.innerText = "打包完成";
-        document.getElementById('dlBtn').href = "/download/"+d.filename;
-        document.getElementById('dlBtn').style.display = 'inline-block';
-        document.getElementById('backBtn').style.display = 'inline-block';
+        status.innerText = "Archive Ready.";
+        status.classList.add('text-success');
+        
+        document.getElementById('dlBtn').href = "/download/" + d.filename;
+        document.getElementById('action-area').style.display = 'flex';
         es.close();
     }
 };
