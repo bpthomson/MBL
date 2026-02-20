@@ -84,7 +84,8 @@ def stream_progress():
                     'mal_id': mal_data['mal_id'] if mal_data else None,
                     'status': status,
                     'img_url': img,
-                    'is_low': is_low
+                    'is_low': is_low,
+                    'year': item.get('year')
                 }
                 results.append(row)
                 
@@ -146,7 +147,7 @@ def dispatch_action():
         MUSIC_QUEUE[sid] = [{'mal_id': i['mal_id'], 'title': i['baha_title']} for i in final]
         return render_template('music_processing.html', user_id=user_id)
     elif action == 'guess':
-        GAME_QUEUE[sid] = [{'mal_id': i['mal_id'], 'title': i['baha_title'], 'img_url': i['img_url']} for i in final]
+        GAME_QUEUE[sid] = [{'mal_id': i['mal_id'], 'title': i['baha_title'], 'img_url': i['img_url'], 'year': i.get('year')} for i in final]
         return render_template('guess_processing.html', user_id=user_id)
         
     return redirect(url_for('index'))
@@ -246,4 +247,4 @@ def audio_proxy():
 
 
 if __name__ == '__main__': 
-    app.run(debug=True, port=5000, threaded=True)
+    app.run(debug=True, port=5001, threaded=True)

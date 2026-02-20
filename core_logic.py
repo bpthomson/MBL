@@ -6,6 +6,8 @@ import os
 import shutil
 import re
 import tempfile
+import json
+import threading
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from zipfile import ZipFile, ZIP_DEFLATED
@@ -13,7 +15,103 @@ import cloudscraper
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 from config import Config
-import random
+
+class ThemeCacheManager:
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super(ThemeCacheManager, cls).__new__(cls)
+                cls._instance._init_cache()
+            return cls._instance
+
+    def _init_cache(self):
+        self.cache_file = 'theme_cache.json'
+        self.cache = {}
+        self.file_lock = threading.Lock()
+        self.rq = cloudscraper.create_scraper()
+        self.rq.headers.update({'User-Agent': 'Mozilla/5.0'})
+        self.search_url = "https://api.animethemes.moe/anime"
+        self.load_cache()
+
+    def load_cache(self):
+        if os.path.exists(self.cache_file):
+            try:
+                with open(self.cache_file, 'r', encoding='utf-8') as f:
+                    self.cache = json.load(f)
+            except:
+                self.cache = {}
+
+    def save_cache(self):
+        with self.file_lock:
+            try:
+                with open(self.cache_file, 'w', encoding='utf-8') as f:
+                    json.dump(self.cache, f, ensure_ascii=False, indent=4)
+            except:
+                pass
+
+    def get_themes(self, mal_id, retry=0):
+        mal_id_str = str(mal_id)
+        
+        # 若快取已有，直接秒回
+        if mal_id_str in self.cache:
+            return self.cache[mal_id_str]
+
+        themes = []
+        try:
+            params = {
+                "filter[has]": "resources",
+                "filter[site]": "MyAnimeList",
+                "filter[external_id]": mal_id,
+                "include": "animethemes.song,animethemes.animethemeentries.videos.audio"
+            }
+            resp = self.rq.get(self.search_url, params=params, timeout=10)
+
+            if resp.status_code == 429:
+                if retry >= 3: return []
+                time.sleep(2 * (retry + 1))
+                return self.get_themes(mal_id, retry + 1)
+
+            if resp.status_code == 200:
+                data = resp.json().get('anime', [])
+                if data:
+                    for t in data[0].get('animethemes', []):
+                        try:
+                            slug = t.get('slug', 'Unknown')
+                            song_data = t.get('song')
+                            title = song_data.get('title', 'Unknown Title') if song_data else 'Unknown Title'
+
+                            entries = t.get('animethemeentries', [])
+                            if not entries: continue
+
+                            videos = entries[0].get('videos', [])
+                            if not videos: continue
+
+                            video = videos[0]
+                            link = ""
+
+                            audio = video.get('audio')
+                            if audio and isinstance(audio, dict) and audio.get('link'):
+                                link = audio.get('link')
+                            else:
+                                v_link = video.get('link', '')
+                                if v_link:
+                                    link = v_link.replace('//v.animethemes.moe/', '//a.animethemes.moe/').replace('.webm', '.ogg')
+
+                            if link:
+                                themes.append({'type': slug, 'title': title, 'link': link})
+                        except Exception:
+                            continue
+
+            # 將結果存入快取並寫入檔案
+            self.cache[mal_id_str] = themes
+            self.save_cache()
+            return themes
+        except Exception:
+            return []
+
 
 class BahamutCrawler:
     def __init__(self, user_id):
@@ -27,7 +125,7 @@ class BahamutCrawler:
 
     def get_collections(self):
         acg_list = []
-        for star in range(1, 6):
+        for star in range(0, 6):
             params = {'userid': self.user_id, 'kind': f'S{star}', 'page': 1, 'category': 4}
             try:
                 response = self.rq.get(self.collection_api, params=params).json()
@@ -73,6 +171,7 @@ class MalMatcher:
         self.allowed_types = ['TV', 'MOVIE', 'OVA', 'TV SPECIAL', 'ONA', 'SPECIAL']
         self.cache = {}
         self.cache_file = cache_file
+        self.theme_mgr = ThemeCacheManager()
         self.load_cache()
 
     def load_cache(self):
@@ -114,28 +213,6 @@ class MalMatcher:
             api_date = datetime.strptime(api_date_str.split('T')[0], "%Y-%m-%d")
             return abs((api_date - target_date).days)
         except: return 99999
-
-    def check_animethemes(self, mal_id, retry=0):
-        url = "https://api.animethemes.moe/anime"
-        params = {
-            "filter[has]": "resources",
-            "filter[site]": "MyAnimeList",
-            "filter[external_id]": mal_id,
-            "include": "animethemes"
-        }
-        try:
-            resp = self.rq.get(url, params=params, timeout=5)
-            if resp.status_code == 429:
-                if retry > 2: return False
-                time.sleep(1)
-                return self.check_animethemes(mal_id, retry + 1)
-            
-            if resp.status_code == 200:
-                data = resp.json()
-                if data.get('anime', []):
-                    return True
-        except: pass
-        return False
 
     def resolve_mal_id(self, row):
         ch_name = row.get('ch_name', '').strip()
@@ -193,7 +270,10 @@ class MalMatcher:
         ))
         
         winner = candidates[0]
-        has_themes = self.check_animethemes(winner['mal_id'])
+        
+        # 此處呼叫共用快取管理器，取代原先的 check_animethemes
+        themes = self.theme_mgr.get_themes(winner['mal_id'])
+        has_themes = len(themes) > 0
         status = ""
 
         if winner['is_group_1'] and has_themes:
@@ -230,82 +310,22 @@ class MalXmlGenerator:
 
 
 class ThemeDownloader:
-    def __init__(self, max_workers=3):
-        self.rq = cloudscraper.create_scraper()
-        self.rq.headers.update({
-            'User-Agent': 'Mozilla/5.0'
-        })
-        self.search_url = "https://api.animethemes.moe/anime"
+    def __init__(self, max_workers=5):
         self.max_workers = max_workers
+        self.theme_mgr = ThemeCacheManager()
 
     def sanitize_filename(self, name):
         return re.sub(r'[\\/*?:"<>|]', "", str(name)).strip()
 
-    def get_theme_links(self, mal_id, retry=0):
-        themes = []
-        try:
-            params = {
-                "filter[has]": "resources",
-                "filter[site]": "MyAnimeList",
-                "filter[external_id]": mal_id,
-                "include": "animethemes.song,animethemes.animethemeentries.videos.audio"
-            }
-            resp = self.rq.get(self.search_url, params=params, timeout=10)
-            
-            if resp.status_code == 429:
-                if retry >= 3: return []
-                time.sleep(2 * (retry + 1))
-                return self.get_theme_links(mal_id, retry + 1)
-                
-            if resp.status_code != 200: return []
-            data = resp.json().get('anime', [])
-            if not data: return []
-            
-            for t in data[0].get('animethemes', []):
-                try:
-                    slug = t.get('slug', 'Unknown')
-                    
-                    # 安全獲取歌曲名稱
-                    song_data = t.get('song')
-                    title = song_data.get('title', 'Unknown Title') if song_data else 'Unknown Title'
-                    
-                    entries = t.get('animethemeentries', [])
-                    if not entries: continue
-                    
-                    videos = entries[0].get('videos', [])
-                    if not videos: continue
-                    
-                    video = videos[0]
-                    link = ""
-                    ext = "webm"
-                    
-                    # 1. 先嘗試獲取獨立的 audio 連結
-                    audio = video.get('audio')
-                    if audio and isinstance(audio, dict) and audio.get('link'):
-                        link = audio.get('link')
-                        mime = audio.get('mimetype', '')
-                        ext = 'mp3' if 'mp3' in mime else 'ogg' if 'ogg' in mime else 'webm'
-                    else:
-                        # 2. 若官方沒有獨立音源，直接拿影片的 link 自行轉換成 audio 連結
-                        v_link = video.get('link', '')
-                        if v_link:
-                            link = v_link.replace('//v.animethemes.moe/', '//a.animethemes.moe/').replace('.webm', '.ogg')
-                            ext = 'ogg'
-                    
-                    if link:
-                        themes.append({'type': slug, 'title': title, 'link': link, 'ext': ext})
-                except Exception as inner_e:
-                    # 避免單一歌曲的解析錯誤中斷整部動畫
-                    continue
-                    
-            return themes
-        except Exception as e: 
-            return []
-        
+    def get_theme_links(self, mal_id):
+        # 此處亦呼叫共用管理器，直接從快取讀取
+        return self.theme_mgr.get_themes(mal_id)
+
     def _download_file(self, url, path):
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            with self.rq.get(url, stream=True, timeout=20) as r:
+            # 由於下載檔案仍需獨立請求，因此維持建立連線
+            with cloudscraper.create_scraper().get(url, stream=True, timeout=20) as r:
                 if r.status_code == 200:
                     with open(path, 'wb') as f: shutil.copyfileobj(r.raw, f, length=1024*1024)
                     return True
@@ -319,7 +339,9 @@ class ThemeDownloader:
         s_title = self.sanitize_filename(item['title'])
         count = 0
         for s in songs:
-            fname = f"{s['type']} - {self.sanitize_filename(s['title'])}.{s['ext']}"
+            # 直接由 link 切割出最後的副檔名
+            ext = s['link'].split('.')[-1] if s.get('link') else 'ogg'
+            fname = f"{s['type']} - {self.sanitize_filename(s['title'])}.{ext}"
             full_path = os.path.join(temp_dir, s_title, fname)
             if self._download_file(s['link'], full_path):
                 count += 1
@@ -387,6 +409,7 @@ class ThemeDownloader:
                             playlist.append({
                                 "anime_ch_name": item['title'],
                                 "anime_img_url": item.get('img_url', ''),
+                                "anime_year": item.get('year') or 'N/A',
                                 "theme_type": s['type'],
                                 "theme_title": s['title'],
                                 "theme_link": audio_link,
@@ -398,5 +421,6 @@ class ThemeDownloader:
                 except Exception as e:
                     pass
                     
+        import random
         random.shuffle(playlist)
         yield {'msg': "清單建立完成！準備進入遊戲...", 'progress': '100%', 'done': True, 'playlist': playlist}

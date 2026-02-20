@@ -3,108 +3,137 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>猜猜動漫主題曲！</title>
+    <title>Audio Quiz</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        /* 猜歌遊戲專屬樣式 */
         .game-wrapper {
-            max-width: 600px;
+            max-width: 560px;
             width: 90%;
-            margin: 40px auto;
-            background-color: #1e1e1e;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 6px 20px rgba(0,0,0,0.5);
-            text-align: center;
-            border: 1px solid #333;
+            margin: 60px auto;
+            background-color: #1a1a1a;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            border: 1px solid #2a2a2a;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
-        h1 { color: #ff9f0a; margin-bottom: 25px; }
-        p#status { font-size: 1.2em; height: 25px; color: #aaa; transition: color 0.3s; margin-bottom: 20px; }
+        .header-section {
+            border-bottom: 1px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+        h1 { color: #e0e0e0; font-size: 1.4em; font-weight: 500; margin: 0; letter-spacing: 1px; }
+        p#status { font-size: 0.85em; color: #888; margin: 0; font-family: monospace; transition: color 0.3s; }
+        
         .error-message { color: #ff453a !important; }
-        .correct-message { color: #32d74b !important; font-weight: bold; }
+        .correct-message { color: #32d74b !important; }
 
-        audio { width: 100%; margin-bottom: 15px; outline: none; }
+        audio { width: 100%; height: 36px; margin-bottom: 25px; outline: none; border-radius: 4px; opacity: 0.8; transition: 0.2s; }
+        audio:hover { opacity: 1; }
         
-        .controls-group { margin-bottom: 20px; background: #2c2c2c; padding: 15px; border-radius: 8px; }
-        .controls-group p { margin: 0 0 10px 0; font-size: 0.9em; color: #ccc; font-weight: bold; }
-        .controls-container { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+        .controls-group { margin-bottom: 20px; }
+        .controls-group p { margin: 0 0 8px 0; font-size: 0.75em; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+        .controls-container { display: flex; gap: 8px; }
         .controls-container button { 
-            padding: 8px 15px; font-size: 0.9em; cursor: pointer; 
-            border: 1px solid #ff9f0a; border-radius: 5px; 
-            background-color: transparent; color: #ff9f0a; transition: 0.2s;
+            padding: 8px 0; font-size: 0.85em; cursor: pointer; 
+            border: 1px solid #333; border-radius: 4px; 
+            background-color: #222; color: #aaa; transition: all 0.2s;
+            flex: 1; font-family: monospace;
         }
-        .controls-container button:hover:not(:disabled) { background-color: #ff9f0a; color: #000; }
+        .controls-container button:hover:not(:disabled) { background-color: #333; color: #fff; border-color: #555; }
+        .controls-container button:disabled { opacity: 0.3; cursor: not-allowed; }
 
-        #answer-inputs-container { display: flex; flex-direction: column; gap: 12px; margin: 25px 0; }
+        #answer-inputs-container { display: flex; flex-direction: column; gap: 10px; margin: 30px 0; }
         #answer-inputs-container input { 
-            padding: 12px; border-radius: 6px; border: 2px solid #555; 
-            background-color: #121212; color: white; font-size: 1em; text-align: center;
-            transition: 0.3s; outline: none;
+            margin: 0; padding: 12px 16px; border-radius: 4px; border: 1px solid #333; 
+            background-color: #111; color: #e0e0e0; font-size: 0.95em;
+            transition: 0.2s; outline: none; width: 100%; box-sizing: border-box;
         }
-        #answer-inputs-container input:focus { border-color: #ff9f0a; }
-        #answer-inputs-container input.correct { border-color: #32d74b; }
-        #answer-inputs-container input.incorrect { border-color: #ff453a; }
+        #answer-inputs-container input:focus { border-color: #0071e3; background-color: #151515; }
+        #answer-inputs-container input.correct { border-color: #32d74b; color: #32d74b; }
+        #answer-inputs-container input.incorrect { border-color: #ff453a; color: #ff453a; }
 
-        .main-actions button { margin: 5px; width: calc(33% - 14px); }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .main-actions { display: flex; gap: 10px; }
+        .main-actions button { 
+            flex: 1; padding: 10px 0; font-size: 0.9em; border-radius: 4px; font-weight: 500; 
+            border: none; cursor: pointer; transition: 0.2s;
+        }
+        #submit-guess-btn { background-color: #0071e3; color: #fff; }
+        #submit-guess-btn:hover:not(:disabled) { background-color: #005bb5; }
+        #reveal-btn { background-color: #2a2a2a; color: #ccc; border: 1px solid #444; }
+        #reveal-btn:hover:not(:disabled) { background-color: #333; color: #fff; }
+        #next-song-btn { background-color: #333; color: #fff; }
+        #next-song-btn:hover:not(:disabled) { background-color: #444; }
 
-        /* 答案揭曉區 */
         #answer-section { 
-            display: none; margin-top: 25px; padding-top: 20px; border-top: 1px dashed #555; 
-            animation: fadeIn 0.5s ease-in-out;
+            display: none; margin-top: 30px; padding-top: 25px; border-top: 1px solid #2a2a2a; 
+            animation: fadeIn 0.3s ease-out; text-align: left;
         }
-        #anime-cover { max-width: 80%; height: auto; border-radius: 8px; margin-top: 15px; border: 2px solid #444; }
-        #video-player { width: 100%; border-radius: 8px; margin-top: 15px; display: none; outline: none; }
+        #anime-title { color: #fff; font-size: 1.1em; font-weight: 500; margin: 0 0 4px 0; }
+        #song-info { color: #888; font-size: 0.85em; margin: 0; font-family: monospace; }
+        #anime-cover { width: 100%; max-height: 200px; object-fit: cover; border-radius: 4px; margin-top: 15px; border: 1px solid #333; }
+        #video-player { width: 100%; border-radius: 4px; margin-top: 15px; display: none; outline: none; background: #000; }
         
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .footer-link { margin-top: 30px; text-align: center; }
+        .footer-link a { color: #555; text-decoration: none; font-size: 0.8em; transition: 0.2s; }
+        .footer-link a:hover { color: #aaa; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
     <div class="game-wrapper">
-        <h1>猜猜動漫主題曲！</h1>
-        <p id="status">正在準備歌曲...</p>
+        <div class="header-section">
+            <h1>Audio Quiz</h1>
+            <p id="status">Initializing...</p>
+        </div>
 
         <audio id="audio-player" controls></audio>
 
         <div class="controls-group">
-            <p>從頭播放</p>
+            <p>Standard Playback</p>
             <div class="controls-container">
-                <button class="play-btn" data-sec="1" data-type="normal">提示 1 秒</button>
-                <button class="play-btn" data-sec="3" data-type="normal">提示 3 秒</button>
-                <button class="play-btn" data-sec="10" data-type="normal">提示 10 秒</button>
+                <button class="play-btn" data-sec="1" data-type="normal">1.0s</button>
+                <button class="play-btn" data-sec="3" data-type="normal">3.0s</button>
+                <button class="play-btn" data-sec="10" data-type="normal">10.0s</button>
             </div>
         </div>
 
         <div class="controls-group">
-            <p>從隨機位置播放</p>
+            <p>Random Playback</p>
             <div class="controls-container">
-                <button class="play-btn" data-sec="1" data-type="random">隨機 1 秒</button>
-                <button class="play-btn" data-sec="3" data-type="random">隨機 3 秒</button>
-                <button class="play-btn" data-sec="10" data-type="random">隨機 10 秒</button>
+                <button class="play-btn" data-sec="1" data-type="random">1.0s</button>
+                <button class="play-btn" data-sec="3" data-type="random">3.0s</button>
+                <button class="play-btn" data-sec="10" data-type="random">10.0s</button>
             </div>
         </div>
 
         <div id="answer-inputs-container">
-            <input type="text" id="guess-name" placeholder="動漫中文名稱" list="anime-titles-list">
+            <input type="text" id="guess-name" placeholder="Title" list="anime-titles-list" autocomplete="off">
             <datalist id="anime-titles-list"></datalist>
-            <input type="text" id="guess-type" placeholder="OP/ED 類型 (例如: OP1)">
+            <input type="text" id="guess-type" placeholder="Type (e.g. OP1)" autocomplete="off">
+            <input type="text" id="guess-year" placeholder="Year" autocomplete="off">
         </div>
 
-        <div class="main-actions controls-container">
-            <button id="submit-guess-btn" class="btn btn-primary">提交答案</button>
-            <button id="reveal-btn" class="btn btn-outline">揭曉答案</button>
-            <button id="next-song-btn" class="btn btn-success">下一首</button>
+        <div class="main-actions">
+            <button id="submit-guess-btn">Submit</button>
+            <button id="reveal-btn">Reveal</button>
+            <button id="next-song-btn">Next</button>
         </div>
 
         <div id="answer-section">
-            <h2 id="anime-title" style="color: #fff; margin-bottom: 5px;"></h2>
-            <p id="song-info" style="color: #aaa; margin-top: 0;"></p>
+            <h2 id="anime-title"></h2>
+            <p id="song-info"></p>
             <video id="video-player" controls></video>
-            <img id="anime-cover" src="" alt="Anime Cover">
+            <img id="anime-cover" src="" alt="Cover">
         </div>
         
-        <div style="margin-top: 30px;">
-            <a href="/" style="color: #888; text-decoration: none; font-size: 14px;">返回首頁</a>
+        <div class="footer-link">
+            <a href="/">Return</a>
         </div>
     </div>
 
@@ -112,7 +141,6 @@
     document.addEventListener('DOMContentLoaded', function() {
         const gamePlaylist = {{ playlist | safe }};
         
-        // --- DOM 元素獲取 ---
         const statusEl = document.getElementById('status');
         const audioPlayerEl = document.getElementById('audio-player');
         const videoPlayerEl = document.getElementById('video-player');
@@ -122,17 +150,17 @@
         const animeTitleEl = document.getElementById('anime-title');
         const songInfoEl = document.getElementById('song-info');
         const animeCoverEl = document.getElementById('anime-cover');
+        
         const guessNameInput = document.getElementById('guess-name');
         const guessTypeInput = document.getElementById('guess-type');
+        const guessYearInput = document.getElementById('guess-year');
         const submitGuessBtn = document.getElementById('submit-guess-btn');
-        const answerInputs = [guessNameInput, guessTypeInput];
+        const answerInputs = [guessNameInput, guessTypeInput, guessYearInput];
         const playBtns = document.querySelectorAll('.play-btn');
         
-        // --- 狀態變數 ---
         let currentSong = null, nextSong = null, isPreloading = false, playbackTimeout;
         let isAnswerRevealed = false;
 
-        // --- 初始化自動完成選單 (Datalist) ---
         const datalist = document.getElementById('anime-titles-list');
         const uniqueTitles = [...new Set(gamePlaylist.map(item => item.anime_ch_name))];
         uniqueTitles.forEach(title => {
@@ -141,7 +169,6 @@
             datalist.appendChild(option);
         });
 
-        // --- 功能函式 ---
         function setStatus(message, isError = false, isCorrect = false) {
             statusEl.textContent = message;
             statusEl.className = '';
@@ -153,15 +180,13 @@
             if (isPreloading || gamePlaylist.length === 0) return;
             isPreloading = true;
             try {
-                // 隨機挑選一首
                 const metadata = gamePlaylist[Math.floor(Math.random() * gamePlaylist.length)];
                 const proxyUrl = `/api/audio-proxy?url=${encodeURIComponent(metadata.theme_link)}`;
                 const audioResponse = await fetch(proxyUrl);
-                if (!audioResponse.ok) throw new Error('音訊載入失敗');
+                if (!audioResponse.ok) throw new Error('Fetch failed');
                 const audioBlob = await audioResponse.blob();
                 nextSong = { metadata, audioBlobUrl: URL.createObjectURL(audioBlob) };
             } catch (error) {
-                console.error('預載失敗:', error);
                 nextSong = null;
             } finally {
                 isPreloading = false;
@@ -176,7 +201,7 @@
             videoPlayerEl.src = '';
             animeCoverEl.style.display = 'none';
 
-            setStatus('正在準備歌曲...');
+            setStatus('Loading...');
             revealBtn.disabled = true;
             nextSongBtn.disabled = true;
             submitGuessBtn.disabled = true;
@@ -197,17 +222,17 @@
             nextSong = null;
 
             if (!currentSong) {
-                setStatus('載入歌曲失敗，請按下一首重試。', true);
+                setStatus('Error: Load failed.', true);
                 nextSongBtn.disabled = false;
                 return;
             }
 
-            const preloadPromise = preloadNextSong(); // 背景預載下一首
+            const preloadPromise = preloadNextSong(); 
             audioPlayerEl.src = currentSong.audioBlobUrl;
             audioPlayerEl.load();
 
             audioPlayerEl.oncanplaythrough = async () => {
-                setStatus('歌曲已就緒，請開始猜題！');
+                setStatus('Ready.');
                 revealBtn.disabled = false;
                 submitGuessBtn.disabled = false;
                 playBtns.forEach(btn => btn.disabled = false);
@@ -216,7 +241,7 @@
             };
 
             audioPlayerEl.onerror = () => {
-                setStatus('音訊播放失敗，請按下一首跳過。', true);
+                setStatus('Error: Playback failed.', true);
                 nextSongBtn.disabled = false;
             };
         }
@@ -236,11 +261,16 @@
             guessTypeInput.classList.toggle('incorrect', !typeCorrect);
             if (typeCorrect) correctCount++;
 
-            if (correctCount === 2) {
-                setStatus('恭喜你，全部答對了！', false, true);
+            const yearCorrect = guessYearInput.value.trim() === String(metadata.anime_year);
+            guessYearInput.classList.toggle('correct', yearCorrect);
+            guessYearInput.classList.toggle('incorrect', !yearCorrect);
+            if (yearCorrect) correctCount++;
+
+            if (correctCount === 3) {
+                setStatus('Match: 100%.', false, true);
                 revealAnswer();
             } else {
-                setStatus(`答對了 ${correctCount} / 2 項。再試試看！`, correctCount === 0);
+                setStatus(`Match: ${correctCount}/3.`, correctCount === 0);
             }
         }
         
@@ -255,8 +285,14 @@
             audioPlayerEl.pause();
             
             const { metadata } = currentSong;
-            animeTitleEl.textContent = metadata.anime_ch_name;
-            songInfoEl.textContent = `${metadata.theme_type}: ${metadata.theme_title}`;
+            
+            let titleText = metadata.anime_ch_name;
+            if (metadata.anime_year && metadata.anime_year !== 'N/A') {
+                titleText += ` (${metadata.anime_year})`;
+            }
+            animeTitleEl.textContent = titleText;
+            
+            songInfoEl.textContent = `${metadata.theme_type} : ${metadata.theme_title}`;
             
             if (metadata.video_link) {
                 videoPlayerEl.src = metadata.video_link;
@@ -285,7 +321,6 @@
             playbackTimeout = setTimeout(() => audioPlayerEl.pause(), seconds * 1000);
         }
 
-        // --- 綁定事件 ---
         submitGuessBtn.addEventListener('click', checkAnswer);
         revealBtn.addEventListener('click', revealAnswer);
         nextSongBtn.addEventListener('click', setupNewGame);
@@ -302,11 +337,10 @@
             });
         });
 
-        // --- 啟動第一局遊戲 ---
         if(gamePlaylist.length > 0) {
             setupNewGame();
         } else {
-            setStatus("錯誤：找不到任何歌曲資料。", true);
+            setStatus("Error: No data.", true);
         }
     });
     </script>
