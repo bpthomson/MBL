@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>MBL System</title>
+    <title>MBL</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body class="flex-center">
@@ -28,10 +28,11 @@
             </span>
         </div>
     </div>
+    
     <div class="wrapper">
         <div class="header-section col">
-            <h1>MBL System</h1>
-            <p class="sub-text">Database Extraction Module</p>
+            <h1>MBL</h1>
+            <p class="sub-text">MyBahaList</p>
         </div>
         {% if error %}<div class="log-line text-error" style="margin-bottom:15px; border:none;">ERR: {{ error }}</div>{% endif %}
         <form method="POST">

@@ -4,8 +4,17 @@ body {
     color: #c9d1d9;
     margin: 0;
     line-height: 1.6;
+    padding-top: 50px;
+    box-sizing: border-box;
 }
-.flex-center { display: flex; justify-content: center; align-items: center; min-height: 100vh; flex-direction: column; }
+
+.flex-center { 
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    min-height: calc(100vh - 50px); 
+    flex-direction: column; 
+}
 .card { background: #161b22; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid #30363d; }
 .wrapper { width: 90%; max-width: 560px; background-color: #161b22; padding: 35px 40px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); border: 1px solid #30363d; box-sizing: border-box; margin: 40px auto; }
 .wrapper-large { max-width: 1100px; padding: 25px; background-color: transparent; border: none; box-shadow: none; margin: 20px auto; }
