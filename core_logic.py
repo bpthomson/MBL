@@ -184,7 +184,8 @@ class MalMatcher:
                             self.cache[row['ch_name'].strip()] = {
                                 'mal_id': int(row['mal_id']),
                                 'img_url': row.get('img_url', ''),
-                                'mal_title': mal_title
+                                'mal_title': mal_title,
+                                'mal_year': row.get('mal_year')
                             }
             except: pass
 
@@ -222,7 +223,8 @@ class MalMatcher:
                 'mal_id': c['mal_id'],
                 'title': c['mal_title'],
                 'url': f"https://myanimelist.net/anime/{c['mal_id']}",
-                'img_url': img
+                'img_url': img,
+                'mal_year': c.get('mal_year')
             }, "Cache Hit"
 
         target_date = None
@@ -244,18 +246,21 @@ class MalMatcher:
                 if res['mal_id'] in seen_ids: continue
                 seen_ids.add(res['mal_id'])
 
-                diff = self.get_days_diff(res.get('aired', {}).get('from'), target_date)
-                is_group_1 = (diff <= 30)
+                aired_from = res.get('aired', {}).get('from')
+                is_group_1 = (self.get_days_diff(aired_from, target_date) <= 30)
+                
+                mal_year = int(aired_from[:4]) if aired_from and len(aired_from) >= 4 and aired_from[:4].isdigit() else None
 
                 candidates.append({
                     'mal_id': res['mal_id'],
                     'title': res['title'],
                     'img_url': res.get('images', {}).get('jpg', {}).get('image_url'),
                     'url': res['url'],
-                    'diff': diff,
+                    'diff': self.get_days_diff(aired_from, target_date),
                     'is_group_1': is_group_1,
                     'priority': priority, 
-                    'idx': idx            
+                    'idx': idx,
+                    'mal_year': mal_year
                 })
 
         if not candidates:

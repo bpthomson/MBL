@@ -49,7 +49,12 @@ def update_local_cache(target_tab_name):
         mal_id = row[2].strip()
         mal_title = row[3].strip() 
         img_url = row[4].strip()
-        check_status = row[7].strip().upper() if len(row) > 7 else ""
+        
+        col_7 = row[7].strip().upper() if len(row) > 7 else ""
+        col_8 = row[8].strip().upper() if len(row) > 8 else ""
+        
+        check_status = 'X' if col_7 == 'X' or col_8 == 'X' else ""
+        mal_year = col_7 if col_7.isdigit() else (col_8 if col_8.isdigit() else "")
         
         if check_status == 'X':
             skipped_count += 1
@@ -60,7 +65,7 @@ def update_local_cache(target_tab_name):
             duplicate_count += 1
             continue
         
-        new_entries.append([ch_name, mal_id, mal_title, img_url])
+        new_entries.append([ch_name, mal_id, mal_title, img_url, mal_year])
         existing_keys.add(ch_name)
 
     if new_entries:
@@ -79,8 +84,8 @@ def update_local_cache(target_tab_name):
         if ans.lower() == 'y':
             sheet.resize(rows=1)
             sheet.resize(rows=1000)
-            headers = ['Time', 'CH Title', 'MAL ID', 'MAL Title', 'Img URL', 'Preview', 'Status', 'Check(X)']
-            sheet.update(range_name='A1:H1', values=[headers])
+            headers = ['Time', 'CH Title', 'MAL ID', 'MAL Title', 'Img URL', 'Preview', 'Status', 'MAL Year', 'Check(X)']
+            sheet.update(range_name='A1:I1', values=[headers])
             print(f"分頁 {target_tab_name} 已清空。\n")
             
     else:

@@ -10177,5 +10177,35 @@
             "title": "Shirushi",
             "link": "https://a.animethemes.moe/SwordArtOnlineS2-ED3.ogg"
         }
+    ],
+    "63106": [],
+    "41812": [
+        {
+            "type": "OP1",
+            "title": "Naughty Love",
+            "link": "https://a.animethemes.moe/MegamiRyouNoRyouboKun-OP1-NCBD1080.ogg"
+        },
+        {
+            "type": "ED1",
+            "title": "Zettai! Kimi Sengen ♡",
+            "link": "https://a.animethemes.moe/MegamiRyouNoRyouboKun-ED1-NCBD1080.ogg"
+        }
+    ],
+    "32262": [
+        {
+            "type": "OP1",
+            "title": "Koi? de Ai? de Boukun desu!",
+            "link": "https://a.animethemes.moe/RenaiBoukun-OP1-NCBD1080.ogg"
+        },
+        {
+            "type": "ED1",
+            "title": "'Suku' wo Oshiete",
+            "link": "https://a.animethemes.moe/RenaiBoukun-ED1-NCBD1080.ogg"
+        },
+        {
+            "type": "ED2",
+            "title": "'Suki' wo Oshiete Kudasai",
+            "link": "https://a.animethemes.moe/RenaiBoukun-ED2.ogg"
+        }
     ]
 }

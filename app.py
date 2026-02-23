@@ -77,7 +77,9 @@ def stream_progress():
                 
                 img = mal_data.get('img_url', '') if mal_data else 'https://cdn.myanimelist.net/img/sp/icon/apple-touch-icon-256.png'
                 
-                # 確保年份被記錄
+                mal_year = mal_data.get('mal_year') if mal_data else None
+                final_year = mal_year if mal_year else item.get('year')
+
                 row = {
                     'id': i,
                     'baha_title': item['ch_name'],
@@ -86,7 +88,7 @@ def stream_progress():
                     'status': status,
                     'img_url': img,
                     'is_low': is_low,
-                    'year': item.get('year')
+                    'year': final_year
                 }
                 results.append(row)
                 
@@ -148,11 +150,42 @@ def dispatch_action():
         MUSIC_QUEUE[sid] = [{'mal_id': i['mal_id'], 'title': i['baha_title']} for i in final]
         return render_template('music_processing.html', user_id=user_id)
     elif action == 'guess':
-        # 確保年份從 TEMP_RESULTS 傳遞到遊戲佇列
-        GAME_QUEUE[sid] = [{'mal_id': i['mal_id'], 'title': i['baha_title'], 'img_url': i['img_url'], 'year': i.get('year')} for i in final]
-        return render_template('guess_processing.html', user_id=user_id)
+        q = [{'mal_id': i['mal_id'], 'title': i['baha_title'], 'img_url': i['img_url'], 'year': i.get('year')} for i in final]
+        GAME_QUEUE[sid] = q
+        valid_years = [int(i['year']) for i in q if i.get('year')]
+        def_min = min(valid_years) if valid_years else 2000
+        def_max = max(valid_years) if valid_years else datetime.datetime.now().year
+        
+        return render_template('guess_setup.html', user_id=user_id, def_min=def_min, def_max=def_max, total=len(q))
         
     return redirect(url_for('index'))
+
+@app.route('/start_guess_game', methods=['POST'])
+def start_guess_game():
+    sid = session['uid']
+    if sid not in GAME_QUEUE:
+        return redirect(url_for('index'))
+    
+    user_id = request.form.get('user_id')
+    min_year = request.form.get('min_year')
+    max_year = request.form.get('max_year')
+    include_na = request.form.get('include_na') == 'on'
+    
+    min_year = int(min_year) if min_year and min_year.isdigit() else 0
+    max_year = int(max_year) if max_year and max_year.isdigit() else 9999
+    
+    filtered_queue = []
+    for item in GAME_QUEUE[sid]:
+        y = item.get('year')
+        if not y:
+            if include_na: 
+                filtered_queue.append(item)
+        elif min_year <= int(y) <= max_year:
+            filtered_queue.append(item)
+            
+    GAME_QUEUE[sid] = filtered_queue
+    
+    return render_template('guess_processing.html', user_id=user_id)
 
 @app.route('/stream_guess_playlist')
 def stream_guess_playlist():

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><title>Quiz Configuration</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .setup-card { background: #0d1117; padding: 25px; border-radius: 8px; border: 1px solid #30363d; width: 100%; max-width: 400px; text-align: left; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; color: #8b949e; font-size: 12px; font-family: monospace; margin-bottom: 8px; }
+        .checkbox-group { display: flex; align-items: center; gap: 8px; color: #c9d1d9; font-size: 13px; cursor: pointer; }
+        
+        /* 雙向滑桿樣式 */
+        .range-slider-container { position: relative; width: 100%; height: 40px; margin-top: 15px; }
+        .range-slider-container input[type=range] { position: absolute; width: 100%; top: 2px; -webkit-appearance: none; background: transparent; pointer-events: none; }
+        .range-slider-container input[type=range]::-webkit-slider-thumb { pointer-events: auto; -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #c9d1d9; cursor: pointer; position: relative; z-index: 2; box-shadow: 0 0 4px rgba(0,0,0,0.5); }
+    </style>
+</head>
+<body class="flex-center">
+    <div class="navbar">
+        <a href="/" class="navbar-brand">
+            <span style="color: #005bb5; font-weight: bold; margin-right: 5px;">/></span>MBL System
+        </a>
+    </div>
+
+    <div class="wrapper" style="display: flex; flex-direction: column; align-items: center;">
+        <div class="header-section" style="text-align: center;">
+            <h1>Module Configuration</h1>
+            <p class="sub-text">Selected candidates: {{ total }}</p>
+            {% if error %}
+            <p style="color: #ff7b72; font-size: 13px; margin-top: 10px;">{{ error }}</p>
+            {% endif %}
+        </div>
+
+        <div class="setup-card">
+            <form action="/start_guess_game" method="POST">
+                <input type="hidden" name="user_id" value="{{ user_id }}">
+                
+                <div class="form-group">
+                    <label>> YEAR RANGE</label>
+                    <div class="range-slider-container">
+                        <div style="position: absolute; width: 100%; height: 4px; background: #30363d; top: 10px; border-radius: 2px;"></div>
+                        <div id="slider-track" style="position: absolute; height: 4px; background: #005bb5; top: 10px; border-radius: 2px; pointer-events: none;"></div>
+                        <input type="range" id="slider-min" min="{{ def_min }}" max="{{ def_max }}" value="{{ def_min }}">
+                        <input type="range" id="slider-max" min="{{ def_min }}" max="{{ def_max }}" value="{{ def_max }}">
+                    </div>
+                    <div style="display: flex; justify-content: space-between; color: #c9d1d9; font-size: 13px; font-family: monospace;">
+                        <span id="display-min">{{ def_min }}</span>
+                        <span id="display-max">{{ def_max }}</span>
+                    </div>
+                    <input type="hidden" name="min_year" id="input-min" value="{{ def_min }}">
+                    <input type="hidden" name="max_year" id="input-max" value="{{ def_max }}">
+                </div>
+
+                <div class="form-group">
+                    <label class="checkbox-group">
+                        <input type="checkbox" name="include_na" checked>
+                        Include entries missing year data (N/A)
+                    </label>
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-top: 30px;">
+                    <a href="/select/{{ user_id }}" class="btn btn-outline" style="flex: 1; text-align: center; text-decoration: none;">Back</a>
+                    <button type="submit" class="btn btn-primary" style="flex: 2;">Initialize DB</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const sliderMin = document.getElementById('slider-min');
+        const sliderMax = document.getElementById('slider-max');
+        const displayMin = document.getElementById('display-min');
+        const displayMax = document.getElementById('display-max');
+        const inputMin = document.getElementById('input-min');
+        const inputMax = document.getElementById('input-max');
+        const track = document.getElementById('slider-track');
+        const absMin = parseInt("{{ def_min }}") || 2000;
+        const absMax = parseInt("{{ def_max }}") || new Date().getFullYear();
+
+        function updateUI() {
+            let val1 = parseInt(sliderMin.value);
+            let val2 = parseInt(sliderMax.value);
+            let min = Math.min(val1, val2);
+            let max = Math.max(val1, val2);
+
+            displayMin.textContent = min;
+            displayMax.textContent = max;
+            inputMin.value = min;
+            inputMax.value = max;
+
+            if(absMax > absMin) {
+                let pct1 = ((min - absMin) / (absMax - absMin)) * 100;
+                let pct2 = ((max - absMin) / (absMax - absMin)) * 100;
+                track.style.left = pct1 + '%';
+                track.style.width = (pct2 - pct1) + '%';
+            } else {
+                track.style.left = '0%';
+                track.style.width = '100%';
+            }
+        }
+
+        sliderMin.addEventListener('input', updateUI);
+        sliderMax.addEventListener('input', updateUI);
+        updateUI();
+    });
+    </script>
+</body>
+</html>

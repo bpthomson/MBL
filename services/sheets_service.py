@@ -37,8 +37,8 @@ def log_candidates_to_sheet(candidates):
             img_url = item["img_url"]
             img_formula = f'=HYPERLINK("{img_url}", IMAGE("{img_url}"))'
             
-            row_data = [now, item['baha_title'], str(item['mal_id']), item['mal_title'], img_url, img_formula, item['status']]
-            
+            row_data = [now, item['baha_title'], str(item['mal_id']), item['mal_title'], img_url, img_formula, item['status'], str(item.get('year') or '')]
+
             if item['status'] == "High Confidence":
                 high_conf_rows.append(row_data)
             else:
@@ -50,7 +50,7 @@ def log_candidates_to_sheet(candidates):
                 ws = sheet.worksheet(sheet_name)
             except:
                 ws = sheet.add_worksheet(title=sheet_name, rows="1000", cols="10")
-                ws.append_row(['Time', 'CH Title', 'MAL ID', 'MAL Title', 'Img URL', 'Preview', 'Status'])
+                ws.append_row(['Time', 'CH Title', 'MAL ID', 'MAL Title', 'Img URL', 'Preview', 'Status', 'MAL Year'])
             ws.append_rows(data, value_input_option='USER_ENTERED')
             
         if high_conf_rows:
