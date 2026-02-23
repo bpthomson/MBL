@@ -246,6 +246,10 @@ def audio_proxy():
         return Response(res.iter_content(chunk_size=8192), content_type=res.headers.get('Content-Type'))
     except requests.exceptions.RequestException as e:
         return str(e), 502
-    
+
+@app.route('/ping')
+def ping():
+    return "OK", 200
+
 if __name__ == '__main__': 
     app.run(debug=True, port=5001, threaded=True)
