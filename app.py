@@ -194,9 +194,13 @@ def stream_guess_playlist():
     if not q: return Response("data: "+json.dumps({'error': 'Session expired or invalid queue.'})+"\n\n", mimetype='text/event-stream')
     
     def generate():
+        yield f"data: {json.dumps({'msg': 'Fetching reviews for sses3205...', 'progress': '0%'})}\n\n"
+        crawler = BahamutCrawler("sses3205")
+        reviews_dict = crawler.get_reviews("sses3205")
+        
         dl = ThemeDownloader(max_workers=3) 
         try:
-            for st in dl.build_playlist_generator(q):
+            for st in dl.build_playlist_generator(q, reviews_dict):
                 if st.get('done'):
                     READY_PLAYLISTS[sid] = st.get('playlist', [])
                 yield f"data: {json.dumps(st)}\n\n"

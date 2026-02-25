@@ -138,6 +138,27 @@ class BahamutCrawler:
             except: pass
         return list({v['id']: v for v in acg_list}.values())
 
+    def get_reviews(self, target_user="sses3205"):
+        review_api = "https://api.gamer.com.tw/acg/v1/reviews_user.php"
+        reviews_dict = {}
+        for page in range(1, 10000):
+            params = {'userId': target_user, 'page': page}
+            try:
+                response = self.rq.get(review_api, params=params).json()
+                data = response.get('data', {})
+                if data.get('page', 0) == 0:
+                    break
+                for e in data.get('list', []):
+                    try:
+                        ch_name = e[0]['reviews']['name']
+                        content = e[0]['content']
+                        reviews_dict[ch_name] = content
+                    except (KeyError, IndexError):
+                        continue
+            except Exception:
+                break
+        return reviews_dict
+
     def get_detail(self, sn_id):
         try:
             data = self.rq.get(self.detail_api, params={'sn': sn_id}).json()['data']['acg']['all'].items()
@@ -386,7 +407,9 @@ class ThemeDownloader:
             
         yield {'msg': "Completed.", 'progress': '100%', 'done': True, 'filename': os.path.basename(output_path)}
 
-    def build_playlist_generator(self, data_list):
+    def build_playlist_generator(self, data_list, reviews_dict=None):
+        if reviews_dict is None:
+            reviews_dict = {}
         yield {'msg': f"Compiling audio database for {len(data_list)} modules...", 'progress': '0%'}
         
         playlist = []
@@ -412,7 +435,8 @@ class ThemeDownloader:
                                 "theme_type": s['type'],
                                 "theme_title": s['title'],
                                 "theme_link": audio_link,
-                                "video_link": video_link
+                                "video_link": video_link,
+                                "review_content": reviews_dict.get(item['title'], "")
                             })
                     
                     progress_val = int((done_count / total) * 95)
