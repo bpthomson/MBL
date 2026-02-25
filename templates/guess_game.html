@@ -141,8 +141,38 @@
                 const proxyUrl = `/api/audio-proxy?url=${encodeURIComponent(metadata.theme_link)}`;
                 const audioResponse = await fetch(proxyUrl);
                 if (!audioResponse.ok) throw new Error('Fetch failed');
-                const audioBlob = await audioResponse.blob();
-                nextSong = { metadata, audioBlobUrl: URL.createObjectURL(audioBlob) };
+                
+                const arrayBuffer = await audioResponse.arrayBuffer();
+                let startOffset = 0;
+                
+                try {
+                    const t0 = performance.now();
+                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    try {
+                        const chunk = arrayBuffer.slice(0, 64 * 1024);
+                        audioBuffer = await audioCtx.decodeAudioData(chunk);
+                    } catch (err) {
+                        audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+                    }
+                    const channelData = audioBuffer.getChannelData(0);
+                    const threshold = 0.015; 
+                    
+                    for (let i = 0; i < channelData.length; i++) {
+                        if (Math.abs(channelData[i]) > threshold) {
+                            startOffset = i / audioBuffer.sampleRate;
+                            break;
+                        }
+                    }
+                    if(audioCtx.state !== 'closed') audioCtx.close();
+                    const t1 = performance.now();
+                    
+                    console.log(`[Audio Analysis] Track: ${metadata.theme_title} | Processing Time: ${(t1 - t0).toFixed(2)} ms | Detected Start: ${startOffset.toFixed(3)} s`);
+                } catch (e) {
+                    console.warn('Silence detection failed, fallback to 0s', e);
+                }
+
+                const audioBlob = new Blob([arrayBuffer]);
+                nextSong = { metadata, audioBlobUrl: URL.createObjectURL(audioBlob), startOffset: startOffset };
             } catch (error) { nextSong = null; } finally { isPreloading = false; }
         }
 
@@ -199,9 +229,13 @@
         function playAudio(seconds, isRandom) {
             if (!currentSong) return;
             if (playbackTimeout) clearTimeout(playbackTimeout);
-            let startTime = 0;
-            if (isRandom && audioPlayerEl.duration) { const maxStartTime = audioPlayerEl.duration - seconds; startTime = Math.random() * (maxStartTime > 0 ? maxStartTime : 0); }
-            audioPlayerEl.currentTime = startTime; audioPlayerEl.play();
+            let startTime = currentSong.startOffset || 0;
+            if (isRandom && audioPlayerEl.duration) { 
+                const maxStartTime = audioPlayerEl.duration - seconds; 
+                startTime = Math.random() * (maxStartTime > 0 ? maxStartTime : 0); 
+            }
+            audioPlayerEl.currentTime = startTime; 
+            audioPlayerEl.play();
             playbackTimeout = setTimeout(() => audioPlayerEl.pause(), seconds * 1000);
         }
 

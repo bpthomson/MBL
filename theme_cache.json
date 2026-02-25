@@ -10207,5 +10207,27 @@
             "title": "'Suki' wo Oshiete Kudasai",
             "link": "https://a.animethemes.moe/RenaiBoukun-ED2.ogg"
         }
+    ],
+    "33489": [
+        {
+            "type": "OP1",
+            "title": "Shiny Ray",
+            "link": "https://a.animethemes.moe/LittleWitchAcademiaTV-OP1-NCBD1080.ogg"
+        },
+        {
+            "type": "OP2",
+            "title": "MIND CONDUCTOR",
+            "link": "https://a.animethemes.moe/LittleWitchAcademiaTV-OP2-NCBD1080.ogg"
+        },
+        {
+            "type": "ED1",
+            "title": "Hoshi wo Todoreba",
+            "link": "https://a.animethemes.moe/LittleWitchAcademiaTV-ED1-NCBD1080.ogg"
+        },
+        {
+            "type": "ED2",
+            "title": "Toumei na Tsubasa",
+            "link": "https://a.animethemes.moe/LittleWitchAcademiaTV-ED2-NCBD1080.ogg"
+        }
     ]
 }
