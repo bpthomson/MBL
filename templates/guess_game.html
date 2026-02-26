@@ -253,17 +253,17 @@
                 if (!audioResponse.ok) throw new Error('Fetch failed');
                 
                 const arrayBuffer = await audioResponse.arrayBuffer();
-                let startOffset = 0;
+                let startOffset = -1;
                 
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 try {
-                    const chunk = arrayBuffer.slice(0, 64 * 1024);
+                    const chunk = arrayBuffer.slice(0, 96 * 1024);
                     audioBuffer = await audioCtx.decodeAudioData(chunk);
                 } catch (err) {
                     audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
                 }
                 const channelData = audioBuffer.getChannelData(0);
-                const threshold = 0.015; 
+                const threshold = 0.002;
                 
                 for (let i = 0; i < channelData.length; i++) {
                     if (Math.abs(channelData[i]) > threshold) {
@@ -271,6 +271,11 @@
                         break;
                     }
                 }
+
+                if (startOffset < 0) {
+                    startOffset = channelData.length / audioBuffer.sampleRate;
+                }
+
                 if(audioCtx.state !== 'closed') audioCtx.close();
 
                 const audioBlob = new Blob([arrayBuffer]);

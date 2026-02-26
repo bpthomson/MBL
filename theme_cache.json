@@ -10229,5 +10229,56 @@
             "title": "Toumei na Tsubasa",
             "link": "https://a.animethemes.moe/LittleWitchAcademiaTV-ED2-NCBD1080.ogg"
         }
+    ],
+    "53613": [
+        {
+            "type": "OP1",
+            "title": "Nero",
+            "link": "https://a.animethemes.moe/DeadMountDeathPlay-OP1.ogg"
+        },
+        {
+            "type": "ED1",
+            "title": "Iolite",
+            "link": "https://a.animethemes.moe/DeadMountDeathPlay-ED1.ogg"
+        }
+    ],
+    "44204": [
+        {
+            "type": "OP1",
+            "title": "Yotogibanashi",
+            "link": "https://a.animethemes.moe/KyokouSuiriS2-OP1-NCBD1080.ogg"
+        },
+        {
+            "type": "ED1",
+            "title": "Invincible Love",
+            "link": "https://a.animethemes.moe/KyokouSuiriS2-ED1-NCBD1080.ogg"
+        }
+    ],
+    "31181": [
+        {
+            "type": "OP1",
+            "title": "decent black",
+            "link": "https://a.animethemes.moe/Owarimonogatari-OP1.ogg"
+        },
+        {
+            "type": "OP2",
+            "title": "mathemagics",
+            "link": "https://a.animethemes.moe/Owarimonogatari-OP2.ogg"
+        },
+        {
+            "type": "OP3",
+            "title": "Yuudachi Houteishiki",
+            "link": "https://a.animethemes.moe/Owarimonogatari-OP3.ogg"
+        },
+        {
+            "type": "OP4",
+            "title": "Mein Schatz",
+            "link": "https://a.animethemes.moe/Owarimonogatari-OP4.ogg"
+        },
+        {
+            "type": "ED1",
+            "title": "Sayonara no Yukue",
+            "link": "https://a.animethemes.moe/Owarimonogatari-ED1.ogg"
+        }
     ]
 }
