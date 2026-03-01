@@ -447,3 +447,46 @@ class ThemeDownloader:
         import random
         random.shuffle(playlist)
         yield {'msg': "Database compiled. Launching module...", 'progress': '100%', 'done': True, 'playlist': playlist}
+
+class MalAnalyticsFetcher:
+    def __init__(self):
+        self.rq = cloudscraper.create_scraper()
+        self.api_url = "https://api.jikan.moe/v4/anime/"
+
+    def _parse_duration(self, d_str):
+        if not d_str: return 0
+        mins = 0
+        import re
+        hr_match = re.search(r'(\d+)\s*hr', d_str)
+        min_match = re.search(r'(\d+)\s*min', d_str)
+        if hr_match: mins += int(hr_match.group(1)) * 60
+        if min_match: mins += int(min_match.group(1))
+        return mins
+
+    def fetch_details(self, mal_id):
+        try:
+            time.sleep(0.4)
+            resp = self.rq.get(f"{self.api_url}{mal_id}", timeout=10)
+            
+            if resp.status_code == 429:
+                time.sleep(1.5)
+                return self.fetch_details(mal_id)
+                
+            if resp.status_code == 200:
+                data = resp.json().get('data', {})
+                return {
+                    'mal_id': mal_id,
+                    'title': data.get('title'),
+                    'score': data.get('score') or 0,
+                    'rank': data.get('rank') or 99999,
+                    'popularity': data.get('popularity') or 99999,
+                    'source': data.get('source', 'Unknown'),
+                    'genres': [g['name'] for g in data.get('genres', [])] + [t['name'] for t in data.get('themes', [])],
+                    'studios': [s['name'] for s in data.get('studios', [])],
+                    'demographics': [d['name'] for d in data.get('demographics', [])],
+                    'episodes': data.get('episodes') or 0,
+                    'duration_mins': self._parse_duration(data.get('duration', ''))
+                }
+        except Exception:
+            pass
+        return None

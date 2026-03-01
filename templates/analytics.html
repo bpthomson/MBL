@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MBL Analytics</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .dashboard-grid { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 20px; 
+            width: 100%; 
+            max-width: 1200px; 
+            margin-top: 20px; 
+        }
+        .chart-card { 
+            background: #0d1117; 
+            border: 1px solid #30363d; 
+            border-radius: 8px; 
+            padding: 20px; 
+            text-align: center; 
+            position: relative;
+        }
+        /* 提示文字：告知圖表可點擊 */
+        .click-hint {
+            font-size: 10px;
+            color: #8b949e;
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            font-family: monospace;
+        }
+        .stat-box { 
+            font-size: 32px; 
+            font-weight: bold; 
+            color: #58a6ff; 
+            font-family: monospace; 
+        }
+        .stat-label { 
+            font-size: 12px; 
+            color: #8b949e; 
+            text-transform: uppercase; 
+        }
+        canvas { 
+            max-height: 300px; 
+            cursor: pointer;
+        }
+
+        /* 水平卷軸與動畫卡片設定 */
+        .horizontal-scroll-container {
+            display: flex;
+            overflow-x: auto;
+            gap: 15px;
+            padding: 15px 5px;
+            scrollbar-width: thin;
+            scrollbar-color: #58a6ff #21262d;
+        }
+        .horizontal-scroll-container::-webkit-scrollbar { height: 10px; }
+        .horizontal-scroll-container::-webkit-scrollbar-track { background: #21262d; border-radius: 5px; }
+        .horizontal-scroll-container::-webkit-scrollbar-thumb { background-color: #58a6ff; border-radius: 5px; }
+        
+        .anime-card {
+            width: 130px; 
+            flex: 0 0 130px;
+            background: #010409;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 10px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: transform 0.2s;
+            box-sizing: border-box; 
+        }
+        .anime-card:hover { transform: translateY(-5px); border-color: #58a6ff; }
+        .anime-card img {
+            width: 100%; aspect-ratio: 3 / 4; height: auto;
+            object-fit: cover; object-position: center;
+            border-radius: 4px; margin-bottom: 10px; border: 1px solid #21262d;
+        }
+        .anime-card .anime-title {
+            font-size: 12px; color: #c9d1d9; width: 100%;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            margin-bottom: 5px; font-weight: bold;
+        }
+        .anime-card .rank-badge {
+            font-size: 11px; padding: 3px 8px; border-radius: 10px;
+            background: #21262d; color: #8b949e; font-weight: bold; width: 80%;
+        }
+        .badge-gold { color: #ffd700; background: rgba(255,215,0,0.1); border: 1px solid rgba(255,215,0,0.3); }
+        .badge-red { color: #ff7b72; background: rgba(255,123,114,0.1); border: 1px solid rgba(255,123,114,0.3); }
+
+        /* 彈出視窗 (Modal) 設定 */
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(1, 4, 9, 0.85); z-index: 1000; justify-content: center; align-items: center;
+            backdrop-filter: blur(4px);
+        }
+        .modal-box {
+            background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+            width: 90%; max-width: 1000px; max-height: 85vh; display: flex; flex-direction: column;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.8);
+        }
+        .modal-header {
+            padding: 20px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center;
+        }
+        .modal-body {
+            padding: 20px; overflow-y: auto; display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 15px;
+            scrollbar-width: thin; scrollbar-color: #58a6ff #21262d;
+        }
+        .close-btn { color: #8b949e; font-size: 28px; cursor: pointer; transition: 0.2s; line-height: 1; }
+        .close-btn:hover { color: #ff7b72; }
+    </style>
+</head>
+<body class="flex-center" style="padding: 40px 0; height: auto;">
+    <div class="navbar">
+        <a href="/" class="navbar-brand">
+            <span style="color: #005bb5; font-weight: bold; margin-right: 5px;">/></span>MBL System
+        </a>
+        <div class="navbar-links" style="display: flex; align-items: center; gap: 15px;">
+            <span style="display: flex; align-items: center; gap: 5px; color: #3fb950; font-family: monospace; font-size: 11px;">
+                <span style="width: 6px; height: 6px; background-color: #3fb950; border-radius: 50%; display: inline-block; box-shadow: 0 0 5px #3fb950;"></span>
+                SYS.ONLINE
+            </span>
+            {% if user_id %}
+            <span style="color: #8b949e; font-family: monospace; font-size: 11px; border-left: 1px solid #30363d; padding-left: 15px;">
+                TARGET : <span style="color: #c9d1d9;">{{ user_id }}</span>
+            </span>
+            {% endif %}
+            <span style="border-left: 1px solid #30363d; padding-left: 15px;">
+                <a href="https://docs.google.com/spreadsheets/d/14lacBmNveOxbD461wObB9x0KW86dFY4GgsTbte8iOo8/edit" target="_blank">[ Error Logs ]</a>
+            </span>
+        </div>
+    </div>
+
+    <div id="detail-modal" class="modal-overlay" onclick="if(event.target === this) closeModal();">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h2 id="modal-title" style="margin: 0; color: #58a6ff; font-size: 18px;"></h2>
+                <span class="close-btn" onclick="closeModal()">&times;</span>
+            </div>
+            <div id="modal-content" class="modal-body"></div>
+        </div>
+    </div>
+
+    <div class="wrapper" style="max-width: 1200px; margin-top: 60px;">
+        <h1 style="text-align: center; color: #c9d1d9;">MAL Data Analytics</h1>
+        <p style="text-align: center; color: #8b949e; font-family: monospace; margin-bottom: 40px;">> ANALYSIS REPORT FOR: {{ user_id }}</p>
+
+        <div style="display: flex; justify-content: center; gap: 30px; margin-bottom: 30px; flex-wrap: wrap;">
+            <div class="chart-card" style="width: 180px;">
+                <div class="stat-box" id="total-watched">0</div>
+                <div class="stat-label">Total Selected</div>
+            </div>
+            <div class="chart-card" style="width: 180px;">
+                <div class="stat-box" style="color: #ffd700;" id="avg-score">0.00</div>
+                <div class="stat-label">MAL Avg Score</div>
+            </div>
+            <div class="chart-card" style="width: 180px;">
+                <div class="stat-box" style="color: #ff7b72;" id="total-hours">0</div>
+                <div class="stat-label">Hours Watched</div>
+            </div>
+            <div class="chart-card" style="width: 180px;">
+                <div class="stat-box" style="color: #3fb950;" id="total-eps">0</div>
+                <div class="stat-label">Total Episodes</div>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="chart-card">
+                <div class="click-hint">[CLICKABLE]</div>
+                <h3 style="margin-top: 0;">Top Genres & Themes</h3>
+                <canvas id="genreChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <div class="click-hint">[CLICKABLE]</div>
+                <h3 style="margin-top: 0;">Production Studios</h3>
+                <canvas id="studioChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <div class="click-hint">[CLICKABLE]</div>
+                <h3 style="margin-top: 0;">Year Distribution</h3>
+                <canvas id="yearChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <div class="click-hint">[CLICKABLE]</div>
+                <h3 style="margin-top: 0;">Source Material</h3>
+                <canvas id="sourceChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <div class="click-hint">[CLICKABLE]</div>
+                <h3 style="margin-top: 0;">Target Demographics</h3>
+                <canvas id="demoChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <div class="click-hint">[CLICKABLE]</div>
+                <h3 style="margin-top: 0;">Episode Preference</h3>
+                <canvas id="epChart"></canvas>
+            </div>
+
+            <div class="chart-card" style="grid-column: span 2;">
+                <h3 style="margin-top: 0; color: #ffd700; text-align: left;">> Global Rank Archive</h3>
+                <div id="rank-list" class="horizontal-scroll-container"></div>
+            </div>
+
+            <div class="chart-card" style="grid-column: span 2;">
+                <h3 style="margin-top: 0; color: #ff7b72; text-align: left;">> Popularity Archive</h3>
+                <div id="pop-list" class="horizontal-scroll-container"></div>
+            </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 40px;">
+            <a href="/select/{{user_id}}" class="btn btn-secondary" style="font-family: monospace;">[ Return to Selection ]</a>
+        </div>
+    </div>
+
+    <script>
+        const stats = {{ stats | tojson }};
+        const rawData = stats.raw_data || [];
+        
+        document.getElementById('total-watched').textContent = stats.total_watched.toLocaleString();
+        document.getElementById('avg-score').textContent = stats.avg_score;
+        document.getElementById('total-hours').textContent = stats.total_hours.toLocaleString();
+        document.getElementById('total-eps').textContent = stats.total_eps.toLocaleString();
+
+        Chart.defaults.color = '#8b949e';
+        Chart.defaults.font.family = 'monospace';
+        Chart.defaults.borderColor = '#21262d'; 
+        
+        const darkColors = [
+            'rgba(88, 166, 255, 0.7)', 'rgba(63, 185, 80, 0.7)', 'rgba(163, 113, 247, 0.7)', 
+            'rgba(210, 168, 255, 0.7)', 'rgba(121, 192, 255, 0.7)', 'rgba(255, 123, 114, 0.7)', 
+            'rgba(255, 166, 87, 0.7)', 'rgba(137, 87, 229, 0.7)', 'rgba(46, 160, 67, 0.7)'
+        ];
+
+        // 輔助函數：將物件轉為陣列並強制降冪排序
+        function getSortedData(obj) {
+            const entries = Object.entries(obj).sort((a, b) => b[1] - a[1]);
+            return { labels: entries.map(e => e[0]), data: entries.map(e => e[1]) };
+        }
+
+        // 互動 Modal 邏輯
+        const modal = document.getElementById('detail-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalContent = document.getElementById('modal-content');
+
+        function closeModal() { modal.style.display = 'none'; }
+
+        function handleChartClick(elements, chart, filterType) {
+            if (!elements.length) return;
+            const idx = elements[0].index;
+            const label = chart.data.labels[idx];
+            
+            let filtered = [];
+            if (filterType === 'genre') {
+                filtered = rawData.filter(item => (item.genres || []).includes(label));
+            } else if (filterType === 'studio') {
+                filtered = rawData.filter(item => (item.studios || []).includes(label));
+            } else if (filterType === 'year') {
+                filtered = rawData.filter(item => String(item.year) === String(label));
+            } else if (filterType === 'source') {
+                filtered = rawData.filter(item => item.source === label);
+            } else if (filterType === 'demo') {
+                filtered = rawData.filter(item => (item.demographics || []).includes(label));
+            } else if (filterType === 'ep') {
+                filtered = rawData.filter(item => {
+                    const eps = item.episodes || 0;
+                    if (label === "Movie/OVA (1)") return eps === 1;
+                    if (label === "Short (2-13)") return eps > 1 && eps <= 13;
+                    if (label === "Medium (14-26)") return eps > 13 && eps <= 26;
+                    if (label === "Long (27+)") return eps > 26;
+                    return false;
+                });
+            }
+
+            // 在 Modal 內顯示的項目，依據 Rank 進行排序
+            filtered.sort((a, b) => (a.rank || 99999) - (b.rank || 99999));
+
+            modalTitle.textContent = `> ${filterType.toUpperCase()}: ${label} (${filtered.length} TITLES)`;
+            modalContent.innerHTML = '';
+
+            filtered.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'anime-card';
+                card.style.width = '100%'; 
+                
+                const title = item.baha_title || item.title;
+                const imgUrl = item.img_url || 'https://cdn.myanimelist.net/img/sp/icon/apple-touch-icon-256.png';
+                const rankVal = item.rank < 99999 ? `#${item.rank.toLocaleString()}` : 'N/A';
+
+                card.innerHTML = `
+                    <img src="${imgUrl}" alt="Cover">
+                    <div class="anime-title" title="${title}">${title}</div>
+                    <div class="rank-badge">Rank ${rankVal}</div>
+                `;
+                modalContent.appendChild(card);
+            });
+
+            modal.style.display = 'flex';
+            
+            setTimeout(() => {
+                modalContent.scrollTop = 0;
+            }, 1);
+        }
+
+        // 共用圓餅圖設定 (包含點擊事件)
+        const getPieOptions = (filterType) => ({
+            plugins: { legend: { position: 'right' } },
+            elements: { arc: { borderWidth: 2, borderColor: '#0d1117' } },
+            onClick: (e, els, chart) => handleChartClick(els, chart, filterType)
+        });
+
+        // 1. Genres (Doughnut)
+        const genreData = getSortedData(stats.genres);
+        new Chart(document.getElementById('genreChart'), {
+            type: 'doughnut',
+            data: { labels: genreData.labels, datasets: [{ data: genreData.data, backgroundColor: darkColors }] },
+            options: getPieOptions('genre')
+        });
+
+        // 2. Studios (Bar)
+        const studioData = getSortedData(stats.studios);
+        new Chart(document.getElementById('studioChart'), {
+            type: 'bar',
+            data: { 
+                labels: studioData.labels, 
+                datasets: [{ label: 'Anime Count', data: studioData.data, backgroundColor: 'rgba(163, 113, 247, 0.2)', borderColor: '#a371f7', borderWidth: 1 }] 
+            },
+            options: { indexAxis: 'y', onClick: (e, els, chart) => handleChartClick(els, chart, 'studio') } 
+        });
+
+        // 3. Years (Bar) - 年份需按照時間順序排列，故不使用降冪排序函數
+        const sortedYears = Object.keys(stats.years).sort();
+        const yearVals = sortedYears.map(y => stats.years[y]);
+        new Chart(document.getElementById('yearChart'), {
+            type: 'bar',
+            data: { 
+                labels: sortedYears, 
+                datasets: [{ label: 'Anime Count', data: yearVals, backgroundColor: 'rgba(88, 166, 255, 0.2)', borderColor: '#58a6ff', borderWidth: 1 }] 
+            },
+            options: { onClick: (e, els, chart) => handleChartClick(els, chart, 'year') }
+        });
+
+        // 4. Sources (Pie)
+        const sourceData = getSortedData(stats.sources);
+        new Chart(document.getElementById('sourceChart'), {
+            type: 'pie',
+            data: { labels: sourceData.labels, datasets: [{ data: sourceData.data, backgroundColor: darkColors }] },
+            options: getPieOptions('source')
+        });
+
+        // 5. Demographics (Doughnut)
+        const demoData = getSortedData(stats.demographics);
+        new Chart(document.getElementById('demoChart'), {
+            type: 'doughnut',
+            data: { labels: demoData.labels, datasets: [{ data: demoData.data, backgroundColor: darkColors }] },
+            options: getPieOptions('demo')
+        });
+
+        // 6. Episode Preference (Bar) - 篇幅有固定邏輯順序，不使用降冪排序
+        new Chart(document.getElementById('epChart'), {
+            type: 'bar',
+            data: { 
+                labels: Object.keys(stats.ep_prefs), 
+                datasets: [{ label: 'Anime Count', data: Object.values(stats.ep_prefs), backgroundColor: 'rgba(63, 185, 80, 0.2)', borderColor: '#3fb950', borderWidth: 1 }] 
+            },
+            options: { onClick: (e, els, chart) => handleChartClick(els, chart, 'ep') }
+        });
+
+        // 下方長卷軸渲染邏輯
+        function createHorizontalList(containerId, items, labelStr) {
+            const container = document.getElementById(containerId);
+            if (!items || items.length === 0) {
+                container.innerHTML = '<div style="color: #8b949e; width: 100%; text-align: center; font-family: monospace;">> No data available.</div>';
+                return;
+            }
+            const total = items.length;
+            items.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.className = 'anime-card';
+                let badgeClass = '';
+                if (index < 3) badgeClass = 'badge-gold';
+                else if (index >= total - 3) badgeClass = 'badge-red';
+                
+                const imgUrl = item.img || 'https://cdn.myanimelist.net/img/sp/icon/apple-touch-icon-256.png';
+                card.innerHTML = `
+                    <img src="${imgUrl}" alt="Cover">
+                    <div class="anime-title" title="${item.title}">${item.title}</div>
+                    <div class="rank-badge ${badgeClass}">${labelStr} #${item.val.toLocaleString()}</div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        createHorizontalList('rank-list', stats.all_ranked, 'Rank');
+        createHorizontalList('pop-list', stats.all_popular, 'Pop');
+    </script>
+</body>
+</html>

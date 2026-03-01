@@ -7,8 +7,9 @@ import io
 from flask import Flask, render_template, request, send_file, Response, redirect, url_for, jsonify, after_this_request, session
 
 from config import Config
-from core_logic import BahamutCrawler, MalMatcher, MalXmlGenerator, ThemeDownloader
+from core_logic import BahamutCrawler, MalMatcher, MalXmlGenerator, ThemeDownloader, MalAnalyticsFetcher
 from services.sheets_service import append_to_sheet, log_candidates_to_sheet
+from collections import Counter
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -23,6 +24,8 @@ MUSIC_QUEUE = {}
 USER_SELECTIONS = {} 
 GAME_QUEUE = {}
 READY_PLAYLISTS = {}
+ANALYTICS_QUEUE = {}
+ANALYTICS_RESULTS = {}
 
 @app.before_request
 def ensure_session_id():
@@ -155,8 +158,13 @@ def dispatch_action():
         valid_years = [int(i['year']) for i in q if i.get('year')]
         def_min = min(valid_years) if valid_years else 2000
         def_max = max(valid_years) if valid_years else datetime.datetime.now().year
-        
         return render_template('guess_setup.html', user_id=user_id, def_min=def_min, def_max=def_max, total=len(q))
+    elif action == 'analytics':
+        ANALYTICS_QUEUE[sid] = [
+            {'mal_id': i['mal_id'], 'year': i.get('year'), 'baha_title': i['baha_title'], 'img_url': i['img_url']} 
+            for i in final
+        ]
+        return render_template('analytics_processing.html', user_id=user_id)
         
     return redirect(url_for('index'))
 
@@ -283,6 +291,100 @@ def audio_proxy():
         return Response(res.iter_content(chunk_size=8192), content_type=res.headers.get('Content-Type'))
     except requests.exceptions.RequestException as e:
         return str(e), 502
+
+@app.route('/stream_analytics')
+def stream_analytics():
+    sid = session['uid']
+    q = ANALYTICS_QUEUE.get(sid)
+    
+    user_id = request.args.get('user_id')
+    final_redirect_url = url_for('show_analytics', user_id=user_id)
+    
+    if not q: return Response("data: {\"error\": \"Invalid queue.\"}\n\n", mimetype='text/event-stream')
+    
+    def generate():
+        fetcher = MalAnalyticsFetcher()
+        total = len(q)
+        results = []
+        
+        for idx, item in enumerate(q):
+            title = item.get('baha_title', 'Unknown')
+            yield f"data: {json.dumps({'msg': f'Extracting: {title} [{idx+1}/{total}]', 'progress': f'{int(((idx+1)/total)*100)}%'})}\n\n"
+            
+            details = fetcher.fetch_details(item['mal_id'])
+            if details:
+                details['year'] = item.get('year')
+                details['baha_title'] = item.get('baha_title')
+                details['img_url'] = item.get('img_url')
+                results.append(details)
+        ANALYTICS_RESULTS[sid] = results
+        
+        yield f"data: {json.dumps({'done': True, 'redirect_url': final_redirect_url})}\n\n"
+        yield ": keep-alive\n\n"
+        
+    return Response(generate(), mimetype='text/event-stream')
+
+@app.route('/analytics/<user_id>')
+def show_analytics(user_id):
+    sid = session['uid']
+    data = ANALYTICS_RESULTS.get(sid)
+    if not data: return redirect(url_for('index'))
+    
+    years = [str(i['year']) for i in data if i.get('year')]
+    genres = [g for i in data for g in i.get('genres', [])]
+    studios = [s for i in data for s in i.get('studios', [])]
+    sources = [i.get('source') for i in data if i.get('source')]
+    scores = [i.get('score') for i in data if i.get('score') > 0]
+    
+    demographics = [d for i in data for d in i.get('demographics', [])]
+    total_eps = 0
+    total_mins = 0
+    ep_prefs = {"Movie/OVA (1)": 0, "Short (2-13)": 0, "Medium (14-26)": 0, "Long (27+)": 0}
+
+    for i in data:
+        eps = i.get('episodes', 0)
+        mins = i.get('duration_mins', 0)
+        
+        total_eps += eps
+        total_mins += (eps * mins)
+        
+        if eps == 1:
+            ep_prefs["Movie/OVA (1)"] += 1
+        elif 1 < eps <= 13:
+            ep_prefs["Short (2-13)"] += 1
+        elif 13 < eps <= 26:
+            ep_prefs["Medium (14-26)"] += 1
+        elif eps > 26:
+            ep_prefs["Long (27+)"] += 1
+
+    total_hours = round(total_mins / 60)
+
+    ranked_data = [i for i in data if i.get('rank') and i.get('rank') < 99999]
+    ranked_data.sort(key=lambda x: x['rank'])
+    all_ranked = [{'title': i.get('baha_title') or i['title'], 'val': i['rank'], 'img': i.get('img_url')} for i in ranked_data]
+
+    pop_data = [i for i in data if i.get('popularity') and i.get('popularity') < 99999]
+    pop_data.sort(key=lambda x: x['popularity'])
+    all_pop = [{'title': i.get('baha_title') or i['title'], 'val': i['popularity'], 'img': i.get('img_url')} for i in pop_data]
+    
+    stats = {
+        'years': dict(Counter(years).most_common()),
+        'genres': dict(Counter(genres).most_common(10)),
+        'studios': dict(Counter(studios).most_common(8)),
+        'sources': dict(Counter(sources).most_common()),
+        'demographics': dict(Counter(demographics).most_common()),
+        'ep_prefs': ep_prefs,
+        'total_eps': total_eps,
+        'total_hours': total_hours,
+        'avg_score': round(sum(scores)/len(scores), 2) if scores else 0,
+        'total_watched': len(data),
+        'all_ranked': all_ranked,
+        'all_popular': all_pop,
+        'raw_data': data
+    }
+    
+    return render_template('analytics.html', user_id=user_id, stats=stats)
+    
 
 @app.route('/ping')
 def ping():

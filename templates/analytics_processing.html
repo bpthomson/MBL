@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"><title>Audio Processing</title>
+    <meta charset="UTF-8"><title>Analytics Processing</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body class="flex-center">
@@ -27,23 +27,18 @@
             </span>
         </div>
     </div>
-
+    
     <div class="wrapper">
         <div class="header-section col">
-            <h1 id="status">Compiling Audio Archive...</h1>
+            <h1 id="status">Extracting MAL Data...</h1>
             <p class="sub-text">Please wait. Processing data stream.</p>
         </div>
         <div class="progress-bg"><div class="progress-fill" id="fill"></div></div>
         <div class="log-window" id="log"></div>
-
-        <div class="main-actions" id="action-area" style="display: none; margin-top: 20px;">
-            <a href="#" id="dlBtn" class="btn btn-primary" style="flex: 1; text-decoration: none;">Download Archive</a>
-            <a href="/select/{{user_id}}" class="btn btn-secondary" style="flex: 1; text-decoration: none;">Return</a>
-        </div>
     </div>
 
 <script>
-const es = new EventSource("/stream_music_download?user_id={{user_id}}");
+const es = new EventSource("/stream_analytics?user_id={{user_id}}");
 const log = document.getElementById('log');
 const status = document.getElementById('status');
 
@@ -55,23 +50,28 @@ function addLog(txt) {
 
 es.onmessage = e => {
     const d = JSON.parse(e.data);
+    
     if(d.error) { 
         status.innerText = "System Error"; 
         addLog("SYS_ERR: " + d.error); 
-        document.getElementById('action-area').style.display = 'flex';
-        document.getElementById('dlBtn').style.display = 'none';
-        es.close(); return; 
+        es.close(); 
+        return; 
     }
-    if(d.msg) { status.innerText = d.msg; addLog(d.msg); }
-    if(d.progress) document.getElementById('fill').style.width = d.progress;
+    
+    if(d.msg) { 
+        status.innerText = d.msg; 
+        addLog(d.msg); 
+    }
+    
+    if(d.progress) {
+        document.getElementById('fill').style.width = d.progress;
+    }
     
     if(d.done) {
-        status.innerText = "Archive Ready.";
+        status.innerText = "Extraction Complete.";
         status.classList.add('text-success');
-        
-        document.getElementById('dlBtn').href = "/download/" + d.filename;
-        document.getElementById('action-area').style.display = 'flex';
         es.close();
+        setTimeout(() => window.location.href = d.redirect_url, 800);
     }
 };
 </script>
