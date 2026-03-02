@@ -4,6 +4,9 @@ import json
 import uuid
 import threading
 import io
+import time
+import requests
+import xml.etree.ElementTree as ET
 from flask import Flask, render_template, request, send_file, Response, redirect, url_for, jsonify, after_this_request, session
 
 from config import Config
@@ -26,6 +29,7 @@ GAME_QUEUE = {}
 READY_PLAYLISTS = {}
 ANALYTICS_QUEUE = {}
 ANALYTICS_RESULTS = {}
+MAL_IMPORT_QUEUE = {}
 
 @app.before_request
 def ensure_session_id():
@@ -41,6 +45,127 @@ def index():
         if not user_id: return render_template('index.html', error="Target ID is required.")
         return render_template('processing.html', user_id=user_id, limit=limit)
     return render_template('index.html')
+
+@app.route('/import_mal_xml', methods=['POST'])
+def import_mal_xml():
+    if 'mal_file' not in request.files:
+        return render_template('index.html', error="未提供檔案。")
+        
+    file = request.files['mal_file']
+    if file.filename == '':
+        return render_template('index.html', error="未選擇檔案。")
+        
+    sid = session['uid']
+    user_id = request.form.get('user_id', '').strip() or 'MAL_User'
+    
+    try:
+        tree = ET.parse(file)
+        root = tree.getroot()
+        parsed_data = []
+        
+        for i, anime in enumerate(root.findall('anime')):
+            mal_id_node = anime.find('series_animedb_id')
+            title_node = anime.find('series_title')
+            
+            if mal_id_node is None or title_node is None:
+                continue
+                
+            mal_id = mal_id_node.text
+            title = title_node.text
+            
+            parsed_data.append({
+                'id': i,
+                'baha_title': title, 
+                'mal_title': title,
+                'mal_id': int(mal_id) if mal_id.isdigit() else None
+            })
+            
+        if not parsed_data:
+            return render_template('index.html', error="XML 檔案中未找到有效的動畫資料。")
+            
+        MAL_IMPORT_QUEUE[sid] = parsed_data
+        
+        return render_template('mal_processing.html', user_id=user_id)
+    except ET.ParseError:
+        return render_template('index.html', error="無效的 XML 格式。")
+    except Exception as e:
+        return render_template('index.html', error=f"解析發生錯誤: {str(e)}")
+
+@app.route('/stream_mal_import')
+def stream_mal_import():
+    user_id = request.args.get('user_id', 'MAL_User').strip()
+    sid = session['uid']
+    q = MAL_IMPORT_QUEUE.get(sid)
+    
+    try: 
+        final_url = url_for('select_results', user_id=user_id)
+    except Exception: 
+        return Response("data: error\n\n", mimetype='text/event-stream')
+
+    if not q:
+        return Response("data: " + json.dumps({'error': 'Queue invalid or expired.'}) + "\n\n", mimetype='text/event-stream')
+
+    def generate():
+        yield f"data: {json.dumps({'msg': f'Detected {len(q)} records. Fetching metadata...'})}\n\n"
+        
+        matcher = MalMatcher()
+        id_cache = {v['mal_id']: v for v in matcher.cache.values() if v.get('mal_id')}
+        
+        results = []
+        total = len(q)
+        
+        with requests.Session() as req_session:
+            for i, item in enumerate(q):
+                mal_id = item['mal_id']
+                title = item['mal_title']
+                
+                img = 'https://cdn.myanimelist.net/img/sp/icon/apple-touch-icon-256.png'
+                year = None
+                status = "MAL Import"
+                is_low = False 
+                
+                if mal_id in id_cache:
+                    cached = id_cache[mal_id]
+                    img = cached.get('img_url') or img
+                    year = cached.get('mal_year')
+                    status = "Cache Hit"
+                else:
+                    time.sleep(0.4) 
+                    try:
+                        resp = req_session.get(f"https://api.jikan.moe/v4/anime/{mal_id}", timeout=10)
+                        if resp.status_code == 429:
+                            time.sleep(1.5)
+                            resp = req_session.get(f"https://api.jikan.moe/v4/anime/{mal_id}", timeout=10)
+                            
+                        if resp.status_code == 200:
+                            data = resp.json().get('data', {})
+                            img = data.get('images', {}).get('jpg', {}).get('image_url', img)
+                            aired_from = data.get('aired', {}).get('from')
+                            if aired_from and len(aired_from) >= 4 and aired_from[:4].isdigit():
+                                year = int(aired_from[:4])
+                            status = "API Fetched"
+                    except Exception:
+                        status = "API Failed"
+                
+                row = {
+                    'id': i,
+                    'baha_title': title,
+                    'mal_title': title,
+                    'mal_id': mal_id,
+                    'status': status,
+                    'img_url': img,
+                    'is_low': is_low,
+                    'year': year
+                }
+                results.append(row)
+                
+                yield f"data: {json.dumps({'type': 'image', 'img_url': img, 'title': title, 'status': status, 'is_low': is_low, 'current': i+1, 'total': total})}\n\n"
+            
+        TEMP_RESULTS[sid] = results
+        yield f"data: {json.dumps({'done': True, 'redirect_url': final_url})}\n\n"
+        yield ": keep-alive\n\n"
+
+    return Response(generate(), mimetype='text/event-stream')
 
 @app.route('/stream_progress')
 def stream_progress():
@@ -220,7 +345,7 @@ def stream_guess_playlist():
 @app.route('/play_game')
 def play_game():
     sid = session['uid']
-    user_id = request.args.get('user_id', '') # 接收前端跳轉時夾帶的 user_id
+    user_id = request.args.get('user_id', '')
     playlist = READY_PLAYLISTS.get(sid, [])
     if not playlist: return redirect(url_for('index'))
     return render_template('guess_game.html', playlist=json.dumps(playlist), user_id=user_id)
@@ -281,14 +406,14 @@ def report_match():
 
 @app.route('/api/audio-proxy')
 def audio_proxy():
-    import requests
     url = request.args.get('url')
     if not url: return "URL parameter is missing", 400
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
-        res = requests.get(url, stream=True, timeout=15, headers=headers)
-        res.raise_for_status()
-        return Response(res.iter_content(chunk_size=8192), content_type=res.headers.get('Content-Type'))
+        with requests.Session() as req_session:
+            res = req_session.get(url, stream=True, timeout=15, headers=headers)
+            res.raise_for_status()
+            return Response(res.iter_content(chunk_size=8192), content_type=res.headers.get('Content-Type'))
     except requests.exceptions.RequestException as e:
         return str(e), 502
 

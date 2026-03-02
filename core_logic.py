@@ -490,3 +490,31 @@ class MalAnalyticsFetcher:
         except Exception:
             pass
         return None
+
+def parse_mal_xml(file_stream):
+    tree = ET.parse(file_stream)
+    root = tree.getroot()
+    parsed_data = []
+    
+    for i, anime in enumerate(root.findall('anime')):
+        mal_id_node = anime.find('series_animedb_id')
+        title_node = anime.find('series_title')
+        
+        if mal_id_node is None or title_node is None:
+            continue
+            
+        mal_id = mal_id_node.text
+        title = title_node.text
+        
+        parsed_data.append({
+            'id': i,
+            'baha_title': title,
+            'mal_title': title,
+            'mal_id': int(mal_id) if mal_id.isdigit() else None,
+            'status': 'MAL Import',
+            'img_url': 'https://cdn.myanimelist.net/img/sp/icon/apple-touch-icon-256.png', 
+            'is_low': False,
+            'year': None 
+        })
+        
+    return parsed_data
