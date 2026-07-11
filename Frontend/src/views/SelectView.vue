@@ -1,0 +1,161 @@
+<script setup>
+import { ref, onMounted, computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useApi } from '../composables/useApi'
+
+const route = useRoute()
+const router = useRouter()
+const { get, post } = useApi()
+
+const userId = computed(() => route.params.userId || '')
+const results = ref([])
+const savedSelections = ref(null)
+const selectedItems = ref([])
+
+const showReportModal = ref(false)
+const reportItemId = ref(null)
+const reportMessage = ref('')
+const reportItemTitle = ref('')
+
+onMounted(async () => {
+  try {
+    const data = await get(`/api/results?user_id=${encodeURIComponent(userId.value)}`)
+    if (data.ok) {
+      results.value = data.results
+      savedSelections.value = data.saved_sel
+      if (savedSelections.value) {
+        selectedItems.value = [...savedSelections.value]
+      } else {
+        selectedItems.value = results.value.filter(r => r.mal_id && !r.is_low).map(r => String(r.id))
+      }
+    } else {
+      alert(data.error || 'Failed to load results')
+      router.push('/')
+    }
+  } catch (err) {
+    alert(err.message)
+    router.push('/')
+  }
+})
+
+const selectAll = () => { selectedItems.value = results.value.map(r => String(r.id)) }
+const selectNone = () => { selectedItems.value = [] }
+
+const openReport = (item) => {
+  if (item.reported) return
+  reportItemId.value = item.id
+  reportItemTitle.value = item.baha_title
+  reportMessage.value = ''
+  showReportModal.value = true
+}
+
+const submitReport = async () => {
+  if (!reportMessage.value) return
+  const item = results.value.find(r => r.id === reportItemId.value)
+  
+  try {
+    const res = await post('/api/report', {
+      user_id: userId.value,
+      item_id: reportItemId.value,
+      message: reportMessage.value
+    })
+    if (res.success) {
+      if (item) item.reported = true
+      showReportModal.value = false
+    } else {
+      alert("Failed to log issue.")
+    }
+  } catch (e) {
+    alert("Connection Error.")
+  }
+}
+
+const dispatchAction = async (action) => {
+  try {
+    const res = await post('/api/dispatch', {
+      user_id: userId.value,
+      selected_items: selectedItems.value,
+      action: action
+    })
+    
+    if (res.ok) {
+      if (action === 'xml') router.push(`/result/${encodeURIComponent(userId.value)}`)
+      else if (action === 'music') router.push({ path: '/music-processing', query: { user_id: userId.value } })
+      else if (action === 'guess') router.push({ path: '/guess-setup', query: { user_id: userId.value, def_min: res.def_min, def_max: res.def_max, total: res.total } })
+      else if (action === 'analytics') router.push({ path: '/analytics-processing', query: { user_id: userId.value } })
+    } else {
+      alert(res.error || 'Action failed')
+    }
+  } catch (e) {
+    alert("Error: " + e.message)
+  }
+}
+
+const isChecked = (id) => selectedItems.value.includes(String(id))
+</script>
+
+<template>
+  <div class="wrapper-large">
+      <div class="controls">
+          <div>
+              <h1 style="font-size: 1.2em; margin:0;">Target Selection</h1>
+              <p class="sub-text" style="margin-top:4px;">Verify and select records.</p>
+          </div>
+          <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn btn-outline" @click="selectAll">Select All</button>
+              <button type="button" class="btn btn-outline" @click="selectNone">Clear</button>
+              <button type="button" @click="dispatchAction('xml')" class="btn btn-secondary">Export XML</button>
+              <button type="button" @click="dispatchAction('music')" class="btn btn-secondary">Download Audio</button>
+              <button type="button" @click="dispatchAction('guess')" class="btn btn-primary">Audio Quiz</button>
+              <button type="button" @click="dispatchAction('analytics')" class="btn btn-primary">Generate Analytics</button>
+          </div>
+      </div>
+
+      <div class="grid">
+          <div v-for="item in results" :key="item.id" style="position: relative;">
+              <label class="sel-card" :class="{ 'selected': isChecked(item.id), 'warning': item.is_low }">
+                  <input type="checkbox" :value="String(item.id)" v-model="selectedItems" style="display:none">
+                  <div class="low-conf-badge">WARN: Low Accuracy</div>
+                  <div class="check-dot"></div>
+                  <img :src="item.img_url" loading="lazy">
+                  <div class="card-body">
+                      <div class="title-main">{{item.baha_title}}</div><div class="title-sub">{{item.mal_title}}</div>
+                  </div>
+              </label>
+              <button type="button" class="report-btn" :class="{ 'reported': item.reported }" @click="openReport(item)">{{ item.reported ? 'Logged' : 'Report Issue' }}</button>
+          </div>
+      </div>
+  </div>
+
+  <div v-show="showReportModal" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:200; display:flex; align-items:center; justify-content:center;">
+      <div class="wrapper" style="margin:0; width:300px; padding:25px;">
+          <h1 style="margin-bottom: 15px; font-size: 1.1em;">Report Issue</h1>
+          <input type="text" v-model="reportMessage" placeholder="Input correct ID or note">
+          <div style="display:flex; gap:10px;">
+              <button @click="submitReport" class="btn btn-danger" style="flex:1;">Submit</button>
+              <button @click="showReportModal = false" class="btn btn-outline" style="flex:1;">Cancel</button>
+          </div>
+      </div>
+  </div>
+</template>
+
+<style scoped>
+.controls { position: sticky; top: 0; z-index: 90; background: rgba(22, 27, 34, 0.95); padding: 15px 20px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border: 1px solid #30363d; backdrop-filter: blur(10px); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 16px; }
+.sel-card { display: block; border-radius: 6px; overflow: hidden; border: 1px solid #30363d; background: #0d1117; cursor: pointer; transition: 0.2s; height: 100%; position: relative; filter: grayscale(40%); opacity: 0.7;}
+.sel-card:hover { filter: grayscale(0%); opacity: 1; border-color: #555; }
+.sel-card img { width: 100%; height: 220px; object-fit: cover; display: block; }
+.card-body { padding: 12px; font-size: 12px; line-height: 1.4; padding-bottom: 45px; border-top: 1px solid #30363d; }
+.title-main { font-weight: 500; color: #c9d1d9; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 4px;}
+.title-sub { color: #6e7681; font-size: 11px; font-family: monospace; }
+.sel-card.selected { border-color: #005bb5; background: #111b26; filter: grayscale(0%); opacity: 1; }
+.sel-card.warning { border-color: #611e1e !important; }
+.low-conf-badge { position: absolute; top: 0; left: 0; width: 100%; background: rgba(218, 54, 51, 0.9); color: white; padding: 4px 0; font-size: 10px; font-weight: bold; z-index: 20; display: none; text-align: center; font-family: monospace; box-sizing: border-box;}
+.sel-card.warning .low-conf-badge { display: block; }
+.check-dot { position: absolute; top: 12px; right: 12px; width: 10px; height: 10px; background: #0071e3; border-radius: 50%; z-index: 20; transform: scale(0); transition: 0.2s; box-shadow: 0 0 8px #0071e3; }
+.sel-card.selected .check-dot { transform: scale(1); }
+
+.report-btn { position: absolute; bottom: 8px; right: 8px; background: transparent; color: #ff7b72; padding: 4px 8px; font-size: 10px; z-index: 30; border: 1px solid #ff7b72; border-radius: 4px; cursor: pointer; text-decoration: none; font-family: monospace;}
+.report-btn:hover { background: #da3633; color: #fff; border-color: #da3633; }
+.report-btn.reported { border-color: #484f58; color: #484f58; cursor: default; background: transparent; pointer-events: none;}
+</style>
