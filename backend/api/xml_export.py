@@ -16,7 +16,12 @@ def download_xml(user_id):
     sid = session['uid']
     content = FINAL_RESULTS.get(sid)
     if not content: return "Invalid Request", 404
+    
     mem = io.BytesIO()
-    mem.write(content.encode('utf-8'))
+    if isinstance(content, str):
+        mem.write(content.encode('utf-8'))
+    else:
+        mem.write(content)
+        
     mem.seek(0)
     return send_file(mem, as_attachment=True, download_name=f"{user_id}_mal_import.xml", mimetype='application/xml')

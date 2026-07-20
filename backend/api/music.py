@@ -10,16 +10,18 @@ music_bp = Blueprint('music', __name__)
 @music_bp.route('/stream/music')
 def stream_music_download():
     user_id = request.args.get('user_id')
-    sid = session['uid']
+    sid = request.args.get('sid') or session['uid']
     q = MUSIC_QUEUE.get(sid)
     
     if not q:
         return Response("data: " + json.dumps({'error': 'Session expired or invalid queue.'}) + "\n\n", mimetype='text/event-stream')
     
+    output_folder = current_app.config['OUTPUT_FOLDER']
+    
     def generate():
         dl = ThemeDownloader(max_workers=3) 
         try:
-            output_path = os.path.join(current_app.config['OUTPUT_FOLDER'], f"{user_id}_anime_songs.zip")
+            output_path = os.path.join(output_folder, f"{user_id}_anime_songs.zip")
             for st in dl.download_and_zip_generator(q, output_path):
                 yield f"data: {json.dumps(st)}\n\n"
         except Exception as e:

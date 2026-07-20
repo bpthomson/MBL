@@ -9,7 +9,7 @@ analytics_bp = Blueprint('analytics', __name__)
 
 @analytics_bp.route('/stream/analytics')
 def stream_analytics():
-    sid = session['uid']
+    sid = request.args.get('sid') or session['uid']
     q = ANALYTICS_QUEUE.get(sid)
     user_id = request.args.get('user_id')
     

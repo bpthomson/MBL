@@ -1,5 +1,5 @@
 import requests
-from flask import Blueprint, request, Response
+from flask import Blueprint, request, Response, session, jsonify
 
 common_bp = Blueprint('common', __name__)
 
@@ -15,6 +15,10 @@ def audio_proxy():
             return Response(res.iter_content(chunk_size=8192), content_type=res.headers.get('Content-Type'))
     except requests.exceptions.RequestException as e:
         return str(e), 502
+
+@common_bp.route('/sid')
+def get_session_id():
+    return jsonify({'sid': session['uid']})
 
 @common_bp.route('/ping')
 def ping():

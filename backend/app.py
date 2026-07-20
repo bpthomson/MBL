@@ -12,7 +12,7 @@ from api.music import music_bp
 from api.select import select_bp
 from api.xml_export import xml_export_bp
 from config import Config
-from flask import Flask, session
+from flask import Flask, request, session
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -38,8 +38,13 @@ if not os.path.exists(app.config["OUTPUT_FOLDER"]):
 @app.before_request
 def ensure_session_id():
     session.permanent = True
-    if "uid" not in session:
-        session["uid"] = str(uuid.uuid4())
+    # Accept session ID from query param or header for consistency
+    # when cookies are unreliable (SSE through proxies, etc.)
+    ext_sid = request.args.get('sid') or request.headers.get('X-Session-ID')
+    if ext_sid:
+        session['uid'] = ext_sid
+    elif 'uid' not in session:
+        session['uid'] = str(uuid.uuid4())
 
 
 # Register Blueprints

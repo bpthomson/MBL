@@ -2,6 +2,8 @@ import os
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'secret_key_for_session_management')
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_HTTPONLY = True
     OUTPUT_FOLDER = 'outputs'
     SPREADSHEET_NAME = 'MyBahaList_Reports'
     CANDIDATE_SHEET_NAME = 'Cache_Candidates'

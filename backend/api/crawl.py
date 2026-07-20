@@ -1,8 +1,8 @@
 import json
 import threading
-from flask import Blueprint, request, session, Response
 
 from core_logic import BahamutCrawler, MalMatcher
+from flask import Blueprint, Response, request, session
 from services.sheets_service import log_candidates_to_sheet
 from state import TEMP_RESULTS, USER_SELECTIONS
 
@@ -12,7 +12,7 @@ crawl_bp = Blueprint('crawl', __name__)
 def stream_progress():
     user_id = request.args.get('user_id', '').strip()
     limit = request.args.get('limit')
-    sid = session['uid']
+    sid = request.args.get('sid') or session['uid']
 
     def generate():
         if sid in USER_SELECTIONS: del USER_SELECTIONS[sid]

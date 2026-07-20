@@ -1,5 +1,5 @@
 import { ref, onUnmounted } from 'vue'
-import { baseURL } from './useApi'
+import { baseURL, ensureSessionId } from './useApi'
 
 export function useSSE(url) {
   const status = ref('Connecting...')
@@ -9,9 +9,17 @@ export function useSSE(url) {
   const isDone = ref(false)
   let eventSource = null
 
-  const connect = (targetUrl) => {
+  const connect = async (targetUrl) => {
     if (eventSource) eventSource.close()
-    
+
+    // Ensure session ID is fetched and append to URL as a query param,
+    // since EventSource connections through proxies may not carry cookies.
+    const sid = await ensureSessionId()
+    if (sid) {
+      const sep = targetUrl.includes('?') ? '&' : '?'
+      targetUrl = `${targetUrl}${sep}sid=${encodeURIComponent(sid)}`
+    }
+
     const fullUrl = targetUrl.startsWith('http') ? targetUrl : `${baseURL}${targetUrl}`
     eventSource = new EventSource(fullUrl, { withCredentials: true })
     

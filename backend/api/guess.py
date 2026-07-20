@@ -46,7 +46,7 @@ def start_guess_game():
 
 @guess_bp.route('/stream/guess-playlist')
 def stream_guess_playlist():
-    sid = session['uid']
+    sid = request.args.get('sid') or session['uid']
     q = GAME_QUEUE.get(sid)
     if not q:
         return Response("data: " + json.dumps({'error': 'Session expired or invalid queue.'}) + "\n\n", mimetype='text/event-stream')

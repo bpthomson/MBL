@@ -56,7 +56,7 @@ def import_mal_xml():
 
 @mal_bp.route('/stream/mal-import')
 def stream_mal_import():
-    sid = session['uid']
+    sid = request.args.get('sid') or session['uid']
     q = MAL_IMPORT_QUEUE.get(sid)
 
     if not q:
