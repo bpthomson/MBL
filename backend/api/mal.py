@@ -83,6 +83,7 @@ def stream_mal_import():
                 
                 if mal_id in id_cache:
                     cached = id_cache[mal_id]
+                    title = cached.get('ch_name', title)
                     img = cached.get('img_url') or img
                     year = cached.get('mal_year')
                     status = "Cache Hit"

@@ -206,7 +206,8 @@ class MalMatcher:
                                 'mal_id': int(row['mal_id']),
                                 'img_url': row.get('img_url', ''),
                                 'mal_title': mal_title,
-                                'mal_year': row.get('mal_year')
+                                'mal_year': row.get('mal_year'),
+                                'ch_name': row['ch_name'].strip()
                             }
             except: pass
 
